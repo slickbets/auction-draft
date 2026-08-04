@@ -141,6 +141,20 @@ export function execute(state: DraftState, cmd: Command): ExecuteResult {
     }
     case 'SET_TIMERS':
       return { ok: true, events: [{ type: 'TIMER_CONFIG_CHANGED', bidClockMs: cmd.bidClockMs, nominationClockMs: cmd.nominationClockMs, at: cmd.now }] }
+    case 'UNDO_SALE': {
+      const sale = state.sales[state.sales.length - 1]
+      if (!sale) return err('NOTHING_TO_UNDO', 'No sales yet')
+      const canceled = state.phase.type === 'bidding' ? state.phase.playerId
+        : state.phase.type === 'paused' && state.phase.inner.type === 'bidding' ? state.phase.inner.playerId
+        : null
+      return {
+        ok: true,
+        events: [{
+          type: 'SALE_UNDONE', sale, canceledInFlightPlayerId: canceled,
+          nominationDeadline: cmd.now + state.config.nominationClockMs, at: cmd.now,
+        }],
+      }
+    }
     default:
       return err('WRONG_PHASE', `Unhandled command ${cmd.type}`)
   }
@@ -204,6 +218,18 @@ export function apply(state: DraftState, event: DraftEvent): DraftState {
     case 'DRAFT_COMPLETED':
       s.phase = { type: 'complete' }
       return s
+    case 'SALE_UNDONE': {
+      const { sale } = event
+      const team = s.teams[sale.teamId]!
+      team.roster = team.roster.filter(r => r.playerId !== sale.playerId)
+      team.budget += sale.price
+      s.available.push(sale.playerId)
+      if (event.canceledInFlightPlayerId) s.available.push(event.canceledInFlightPlayerId)
+      s.sales = s.sales.filter(r => r.overall !== sale.overall)
+      s.pointer = sale.pointerBefore
+      s.phase = { type: 'awaiting_nomination', teamId: sale.nominatorId, deadline: event.nominationDeadline }
+      return s
+    }
     default:
       return s
   }
