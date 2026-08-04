@@ -102,7 +102,26 @@ export function execute(state: DraftState, cmd: Command): ExecuteResult {
         return { ok: true, events: [sold, ...nextNominationEvents(after, state.pointer + 1, cmd.now)] }
       }
       if (state.phase.type === 'awaiting_nomination') {
-        return err('WRONG_PHASE', 'Nomination expiry arrives in Task 7')
+        if (cmd.now < state.phase.deadline) return err('CLOCK_NOT_EXPIRED', 'Deadline not reached')
+        const teamId = state.phase.teamId
+        const team = state.teams[teamId]!
+        if (state.config.nominationExpiryPolicy === 'auto_nominate') {
+          const best = state.config.players
+            .filter(p => state.available.includes(p.id) && firstOpenSlotFor(team, p.position, state.config) !== null)
+            .sort((a, b) => a.rank - b.rank)[0]
+          if (best) {
+            return {
+              ok: true,
+              events: [{
+                type: 'PLAYER_NOMINATED', teamId, playerId: best.id, openingBid: 1,
+                deadline: cmd.now + state.config.bidClockMs, at: cmd.now,
+              }],
+            }
+          }
+          // No legal player for this team: fall through to skip.
+        }
+        const skipped: DraftEvent = { type: 'NOMINATION_SKIPPED', teamId, at: cmd.now }
+        return { ok: true, events: [skipped, ...nextNominationEvents(state, state.pointer + 1, cmd.now)] }
       }
       return err('WRONG_PHASE', 'No clock running')
     }
@@ -143,6 +162,8 @@ export function apply(state: DraftState, event: DraftEvent): DraftState {
       })
       return s
     }
+    case 'NOMINATION_SKIPPED':
+      return s
     case 'DRAFT_COMPLETED':
       s.phase = { type: 'complete' }
       return s
