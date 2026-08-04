@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { run } from '../src/index.js'
 import { startedDraft } from './helpers.js'
+import { makePlayers } from './fixtures.js'
 
 describe('nomination clock expiry', () => {
   it('auto_nominate puts the best-ranked player up at $1 for the team on the clock', () => {
@@ -23,5 +24,16 @@ describe('nomination clock expiry', () => {
     const s = startedDraft()
     const r = run(s, { type: 'CLOCK_EXPIRED', now: 30_999 })
     expect(!r.ok && r.error.code).toBe('CLOCK_NOT_EXPIRED')
+  })
+
+  it('auto_nominate falls back to skip when no legal player exists for the team', () => {
+    const s = startedDraft({
+      rosterTemplate: [{ name: 'QB', eligible: ['QB' as const], count: 1 }],
+      players: makePlayers({ RB: 5 }), // pool has only RBs; QB-only roster → nothing legal to nominate
+    })
+    const r = run(s, { type: 'CLOCK_EXPIRED', now: 31_000 })
+    if (!r.ok) throw new Error(r.error.code)
+    expect(r.events.map(e => e.type)).toEqual(['NOMINATION_SKIPPED', 'NOMINATION_STARTED'])
+    expect(r.state.phase).toMatchObject({ type: 'awaiting_nomination', teamId: 'T2' })
   })
 })
