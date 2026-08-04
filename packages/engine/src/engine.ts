@@ -1,4 +1,6 @@
 import type { DraftState, LeagueConfig, TeamState } from './types.js'
+import type { Command, DraftEvent, EngineError, ExecuteResult } from './types.js'
+import { openSlotCount, maxBid, firstOpenSlotFor } from './roster.js'
 
 export function initialState(config: LeagueConfig): DraftState {
   const teams: Record<string, TeamState> = {}
@@ -15,9 +17,6 @@ export function initialState(config: LeagueConfig): DraftState {
     seq: 0,
   }
 }
-
-import type { Command, DraftEvent, EngineError, ExecuteResult } from './types.js'
-import { openSlotCount, rosterCapacity, maxBid, firstOpenSlotFor } from './roster.js'
 
 function err(code: EngineError['code'], message: string): ExecuteResult {
   return { ok: false, error: { code, message } }
@@ -134,7 +133,7 @@ export function execute(state: DraftState, cmd: Command): ExecuteResult {
     case 'PAUSE': {
       if (state.phase.type !== 'awaiting_nomination' && state.phase.type !== 'bidding')
         return err('WRONG_PHASE', 'Nothing to pause')
-      return { ok: true, events: [{ type: 'DRAFT_PAUSED', remainingMs: state.phase.deadline - cmd.now, at: cmd.now }] }
+      return { ok: true, events: [{ type: 'DRAFT_PAUSED', remainingMs: Math.max(0, state.phase.deadline - cmd.now), at: cmd.now }] }
     }
     case 'RESUME': {
       if (state.phase.type !== 'paused') return err('WRONG_PHASE', 'Not paused')
@@ -209,7 +208,7 @@ export function execute(state: DraftState, cmd: Command): ExecuteResult {
     }
     default: {
       const exhaustive: never = cmd
-      return exhaustive
+      return err('WRONG_PHASE', `Unhandled command ${(exhaustive as Command).type}`)
     }
   }
 }

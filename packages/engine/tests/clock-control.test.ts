@@ -48,6 +48,14 @@ describe('clock control', () => {
     })
   })
 
+  it('pausing after the deadline clamps remaining time to zero', () => {
+    let s = startedDraft() // nomination deadline 31_000
+    s = mustRun(s, { type: 'PAUSE', now: 40_000 })
+    expect(s.phase).toMatchObject({ type: 'paused', remainingMs: 0 })
+    s = mustRun(s, { type: 'RESUME', now: 50_000 })
+    expect(s.phase).toMatchObject({ type: 'awaiting_nomination', deadline: 50_000 })
+  })
+
   it('cannot pause the lobby or resume a running draft', () => {
     const fresh = initialState(testConfig())
     const p = run(fresh, { type: 'PAUSE', now: 500 })
