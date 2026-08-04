@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { initialState, run, openSlotCount, rosterCapacity, type DraftState, type Command, type SlotDef } from '../src/index.js'
+import { initialState, run, replay, openSlotCount, rosterCapacity, type DraftState, type Command, type SlotDef, type DraftEvent } from '../src/index.js'
 import { testConfig, makePlayers } from './fixtures.js'
 
 /** Deterministic PRNG — no Math.random in tests either. */
@@ -13,6 +13,7 @@ function mulberry32(seed: number) {
 }
 
 function assertInvariants(s: DraftState) {
+  const avail = new Set(s.available)
   const cap = rosterCapacity(s.config.rosterTemplate)
   const seen = new Set<string>()
   for (const team of Object.values(s.teams)) {
@@ -21,7 +22,7 @@ function assertInvariants(s: DraftState) {
     for (const r of team.roster) {
       expect(seen.has(r.playerId), `player ${r.playerId} on two rosters`).toBe(false)
       seen.add(r.playerId)
-      expect(s.available.includes(r.playerId), `player ${r.playerId} rostered AND available`).toBe(false)
+      expect(avail.has(r.playerId), `player ${r.playerId} rostered AND available`).toBe(false)
     }
   }
 }
@@ -53,33 +54,45 @@ describe('fuzz: random drafts preserve invariants', () => {
         players: makePlayers({ QB: 80, RB: 100, WR: 100, TE: 90, K: 15, DST: 15 }),
       })
       let s = initialState(cfg)
+      const log: DraftEvent[] = []
       let now = 1000
       let r = run(s, { type: 'START_DRAFT', now })
       if (!r.ok) throw new Error('start failed')
       s = r.state
+      log.push(...r.events)
       let guard = 0
       while (s.phase.type !== 'complete' && guard++ < 20_000) {
         now += 500 + Math.floor(rand() * 2000)
         const cmd = pickCommand(s, rand, now)
         const res = run(s, cmd)
-        if (res.ok) s = res.state // invalid commands are expected; engine must just reject them
+        if (res.ok) { s = res.state; log.push(...res.events) } // invalid commands are expected; engine must just reject them
         assertInvariants(s)
       }
-      expect(s.phase.type).toBe('complete')
+      expect(s.phase.type, `seed ${seed}`).toBe('complete')
+      expect(replay(cfg, log)).toStrictEqual(s)
     }
-  }, 120_000)
+  }, 300_000)
 })
 
 function pickCommand(s: DraftState, rand: () => number, now: number): Command {
   const teams = s.config.nominationOrder
   const teamId = teams[Math.floor(rand() * teams.length)]!
   if (s.phase.type === 'awaiting_nomination') {
-    if (rand() < 0.3) return { type: 'CLOCK_EXPIRED', now: s.phase.deadline + 1 }
+    const roll = rand()
+    if (roll < 0.05) return { type: 'PAUSE', now }
+    if (roll < 0.08 && s.sales.length > 0) {
+      return { type: 'EDIT_PICK', overall: 1 + Math.floor(rand() * s.sales.length), newPrice: 1 + Math.floor(rand() * 50), now }
+    }
+    if (roll < 0.1) return { type: 'ADJUST_BUDGET', teamId, delta: Math.floor(rand() * 21) - 10, now }
+    if (roll < 0.12) return { type: 'ADD_TIME', ms: Math.floor(rand() * 10_000), now }
+    if (roll < 0.14) return { type: 'SET_TIMERS', bidClockMs: 5000 + Math.floor(rand() * 10_000), now }
+    if (roll < 0.4) return { type: 'CLOCK_EXPIRED', now: s.phase.deadline + 1 }
     const playerId = s.available[Math.floor(rand() * s.available.length)] ?? 'NONE'
     return { type: 'NOMINATE', teamId: rand() < 0.8 ? s.phase.teamId : teamId, playerId, openingBid: 1 + Math.floor(rand() * 5), now }
   }
   if (s.phase.type === 'bidding') {
     const roll = rand()
+    if (roll < 0.03) return { type: 'PAUSE', now }
     if (roll < 0.4) return { type: 'CLOCK_EXPIRED', now: s.phase.deadline + 1 }
     if (roll < 0.45 && s.sales.length > 0) return { type: 'UNDO_SALE', now }
     return { type: 'BID', teamId, amount: s.phase.price + 1 + Math.floor(rand() * 3), now }

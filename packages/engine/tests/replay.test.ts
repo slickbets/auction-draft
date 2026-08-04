@@ -19,6 +19,6 @@ describe('replay', () => {
     step({ type: 'CLOCK_EXPIRED', now: 14_000 })
     step({ type: 'UNDO_SALE', now: 20_000 })
     step({ type: 'NOMINATE', teamId: 'T1', playerId: 'WR1', openingBid: 2, now: 25_000 })
-    expect(replay(cfg, log)).toEqual(s)
+    expect(replay(cfg, log)).toStrictEqual(s)
   })
 })
