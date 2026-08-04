@@ -70,6 +70,22 @@ export function execute(state: DraftState, cmd: Command): ExecuteResult {
         }],
       }
     }
+    case 'BID': {
+      if (state.phase.type !== 'bidding') return err('WRONG_PHASE', 'No player on the block')
+      const phase = state.phase
+      const team = state.teams[cmd.teamId]
+      if (!team) return err('UNKNOWN_TEAM', cmd.teamId)
+      if (!Number.isInteger(cmd.amount)) return err('INVALID_AMOUNT', 'Bids are whole dollars')
+      if (cmd.amount <= phase.price) return err('STALE_PRICE', `Price is already $${phase.price}`)
+      if (cmd.teamId === phase.highBidderId) return err('ALREADY_HIGH_BIDDER', 'You are already winning')
+      if (cmd.amount > maxBid(team, state.config)) return err('EXCEEDS_MAX_BID', `Max bid ${maxBid(team, state.config)}`)
+      const player = state.config.players.find(p => p.id === phase.playerId)!
+      if (firstOpenSlotFor(team, player.position, state.config) === null) return err('NO_ELIGIBLE_SLOT', `No open slot for ${player.position}`)
+      return {
+        ok: true,
+        events: [{ type: 'BID_PLACED', teamId: cmd.teamId, amount: cmd.amount, deadline: cmd.now + state.config.bidClockMs, at: cmd.now }],
+      }
+    }
     default:
       return err('WRONG_PHASE', `Unhandled command ${cmd.type}`)
   }
@@ -91,6 +107,11 @@ export function apply(state: DraftState, event: DraftEvent): DraftState {
         highBidderId: event.teamId, nominatorId: event.teamId, deadline: event.deadline,
       }
       return s
+    case 'BID_PLACED': {
+      if (s.phase.type !== 'bidding') return s
+      s.phase = { ...s.phase, price: event.amount, highBidderId: event.teamId, deadline: event.deadline }
+      return s
+    }
     case 'DRAFT_COMPLETED':
       s.phase = { type: 'complete' }
       return s
