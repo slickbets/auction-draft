@@ -20,6 +20,15 @@ describe('migrations', () => {
       expect(q.rows[0].n).toBe(0)
     }
   })
+
+  it('tracks applied migrations with a primary key and timestamp', async () => {
+    const pool = newTestPool()
+    await migrate(pool)
+    const r = await pool.query('SELECT name, applied_at FROM schema_migrations')
+    expect(r.rows.map((x: { name: string }) => x.name)).toEqual(['001_init'])
+    expect(r.rows[0].applied_at).toBeTruthy()
+    await expect(pool.query(`INSERT INTO schema_migrations (name) VALUES ('001_init')`)).rejects.toBeTruthy()
+  })
 })
 
 describe('env', () => {

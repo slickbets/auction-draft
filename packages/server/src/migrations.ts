@@ -42,7 +42,14 @@ export const MIGRATIONS: { name: string; sql: string }[] = [
 ]
 
 export async function migrate(pool: Pool): Promise<string[]> {
-  await pool.query(`CREATE TABLE IF NOT EXISTS schema_migrations (name text)`)
+  const tracking = await pool.query(
+    `SELECT 1 FROM information_schema.tables WHERE table_name = 'schema_migrations'`,
+  )
+  if (!tracking.rows.length) {
+    await pool.query(
+      `CREATE TABLE schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`,
+    )
+  }
   const done = new Set(
     (await pool.query('SELECT name FROM schema_migrations')).rows.map((r: { name: string }) => r.name),
   )
