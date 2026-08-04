@@ -86,6 +86,26 @@ export function execute(state: DraftState, cmd: Command): ExecuteResult {
         events: [{ type: 'BID_PLACED', teamId: cmd.teamId, amount: cmd.amount, deadline: cmd.now + state.config.bidClockMs, at: cmd.now }],
       }
     }
+    case 'CLOCK_EXPIRED': {
+      if (state.phase.type === 'bidding') {
+        const phase = state.phase
+        if (cmd.now < phase.deadline) return err('CLOCK_NOT_EXPIRED', 'Deadline not reached')
+        const winner = state.teams[phase.highBidderId]!
+        const player = state.config.players.find(p => p.id === phase.playerId)!
+        const slot = firstOpenSlotFor(winner, player.position, state.config)!
+        const sold: DraftEvent = {
+          type: 'SOLD', playerId: player.id, teamId: winner.id, price: phase.price, slot,
+          nominatorId: phase.nominatorId, pointerBefore: state.pointer,
+          overall: state.sales.length + 1, at: cmd.now,
+        }
+        const after = apply(state, sold)
+        return { ok: true, events: [sold, ...nextNominationEvents(after, state.pointer + 1, cmd.now)] }
+      }
+      if (state.phase.type === 'awaiting_nomination') {
+        return err('WRONG_PHASE', 'Nomination expiry arrives in Task 7')
+      }
+      return err('WRONG_PHASE', 'No clock running')
+    }
     default:
       return err('WRONG_PHASE', `Unhandled command ${cmd.type}`)
   }
@@ -110,6 +130,17 @@ export function apply(state: DraftState, event: DraftEvent): DraftState {
     case 'BID_PLACED': {
       if (s.phase.type !== 'bidding') return s
       s.phase = { ...s.phase, price: event.amount, highBidderId: event.teamId, deadline: event.deadline }
+      return s
+    }
+    case 'SOLD': {
+      const team = s.teams[event.teamId]!
+      team.roster.push({ playerId: event.playerId, price: event.price, slot: event.slot })
+      team.budget -= event.price
+      s.available = s.available.filter(id => id !== event.playerId)
+      s.sales.push({
+        playerId: event.playerId, teamId: event.teamId, price: event.price,
+        nominatorId: event.nominatorId, pointerBefore: event.pointerBefore, overall: event.overall,
+      })
       return s
     }
     case 'DRAFT_COMPLETED':
