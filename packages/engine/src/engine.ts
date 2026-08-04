@@ -322,3 +322,7 @@ export function run(state: DraftState, cmd: Command):
   for (const e of r.events) s = apply(s, e)
   return { ok: true, state: s, events: r.events }
 }
+
+export function replay(config: LeagueConfig, events: DraftEvent[]): DraftState {
+  return events.reduce(apply, initialState(config))
+}
