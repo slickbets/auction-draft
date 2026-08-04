@@ -43,7 +43,8 @@ export const MIGRATIONS: { name: string; sql: string }[] = [
 
 export async function migrate(pool: Pool): Promise<string[]> {
   const tracking = await pool.query(
-    `SELECT 1 FROM information_schema.tables WHERE table_name = 'schema_migrations'`,
+    `SELECT 1 FROM information_schema.tables
+     WHERE table_name = 'schema_migrations' AND table_schema = current_schema()`,
   )
   if (!tracking.rows.length) {
     await pool.query(
