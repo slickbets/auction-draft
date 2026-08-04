@@ -19,6 +19,7 @@ describe('UNDO_SALE', () => {
     expect(r.state.teams['T5']!.roster).toEqual([])
     expect(r.state.available).toContain('RB1')
     expect(r.state.sales).toHaveLength(0)
+    expect(r.state.pointer).toBe(0)
     expect(r.state.phase).toMatchObject({ type: 'awaiting_nomination', teamId: 'T1', deadline: 50_000 })
   })
 
@@ -29,6 +30,7 @@ describe('UNDO_SALE', () => {
     if (!r.ok) throw new Error(r.error.code)
     expect(r.state.available).toContain('WR1')
     expect(r.state.available).toContain('RB1')
+    expect(r.state.available.filter(id => id === 'WR1')).toHaveLength(1)
     expect(r.state.phase).toMatchObject({ type: 'awaiting_nomination', teamId: 'T1' })
   })
 
@@ -49,5 +51,31 @@ describe('UNDO_SALE', () => {
     const r = run(s, { type: 'UNDO_SALE', now: 30_000 })
     if (!r.ok) throw new Error(r.error.code)
     expect(r.state.phase).toMatchObject({ type: 'awaiting_nomination', teamId: 'T2' })
+  })
+
+  it('undoes from a paused draft and reopens it live', () => {
+    let s = afterOneSale() // T2 on the clock
+    s = mustRun(s, { type: 'NOMINATE', teamId: 'T2', playerId: 'WR1', openingBid: 3, now: 16_000 })
+    s = mustRun(s, { type: 'PAUSE', now: 17_000 })
+    const r = run(s, { type: 'UNDO_SALE', now: 18_000 })
+    if (!r.ok) throw new Error(r.error.code)
+    expect(r.state.phase).toMatchObject({ type: 'awaiting_nomination', teamId: 'T1', deadline: 48_000 })
+    expect(r.state.available.filter(id => id === 'WR1')).toHaveLength(1)
+  })
+
+  it('is repeatable sequentially', () => {
+    let s = afterOneSale() // sale 1: RB1 -> T5 at 42; T2 on the clock
+    s = mustRun(s, { type: 'NOMINATE', teamId: 'T2', playerId: 'WR1', openingBid: 3, now: 16_000 })
+    s = mustRun(s, { type: 'CLOCK_EXPIRED', now: 26_000 }) // sale 2: WR1 -> T2 at 3
+    s = mustRun(s, { type: 'UNDO_SALE', now: 30_000 })
+    expect(s.phase).toMatchObject({ type: 'awaiting_nomination', teamId: 'T2' })
+    expect(s.sales).toHaveLength(1)
+    s = mustRun(s, { type: 'UNDO_SALE', now: 31_000 })
+    expect(s.phase).toMatchObject({ type: 'awaiting_nomination', teamId: 'T1' })
+    expect(s.sales).toHaveLength(0)
+    expect(s.teams['T5']!.budget).toBe(200)
+    expect(s.teams['T2']!.budget).toBe(200)
+    expect(s.available).toContain('RB1')
+    expect(s.available.filter(id => id === 'WR1')).toHaveLength(1)
   })
 })

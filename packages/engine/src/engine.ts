@@ -224,7 +224,8 @@ export function apply(state: DraftState, event: DraftEvent): DraftState {
       team.roster = team.roster.filter(r => r.playerId !== sale.playerId)
       team.budget += sale.price
       s.available.push(sale.playerId)
-      if (event.canceledInFlightPlayerId) s.available.push(event.canceledInFlightPlayerId)
+      const inFlight = event.canceledInFlightPlayerId
+      if (inFlight && !s.available.includes(inFlight)) s.available.push(inFlight)
       s.sales = s.sales.filter(r => r.overall !== sale.overall)
       s.pointer = sale.pointerBefore
       s.phase = { type: 'awaiting_nomination', teamId: sale.nominatorId, deadline: event.nominationDeadline }
