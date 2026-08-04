@@ -125,6 +125,22 @@ export function execute(state: DraftState, cmd: Command): ExecuteResult {
       }
       return err('WRONG_PHASE', 'No clock running')
     }
+    case 'PAUSE': {
+      if (state.phase.type !== 'awaiting_nomination' && state.phase.type !== 'bidding')
+        return err('WRONG_PHASE', 'Nothing to pause')
+      return { ok: true, events: [{ type: 'DRAFT_PAUSED', remainingMs: state.phase.deadline - cmd.now, at: cmd.now }] }
+    }
+    case 'RESUME': {
+      if (state.phase.type !== 'paused') return err('WRONG_PHASE', 'Not paused')
+      return { ok: true, events: [{ type: 'DRAFT_RESUMED', deadline: cmd.now + state.phase.remainingMs, at: cmd.now }] }
+    }
+    case 'ADD_TIME': {
+      if (state.phase.type !== 'awaiting_nomination' && state.phase.type !== 'bidding' && state.phase.type !== 'paused')
+        return err('WRONG_PHASE', 'No clock to extend')
+      return { ok: true, events: [{ type: 'TIME_ADDED', ms: cmd.ms, at: cmd.now }] }
+    }
+    case 'SET_TIMERS':
+      return { ok: true, events: [{ type: 'TIMER_CONFIG_CHANGED', bidClockMs: cmd.bidClockMs, nominationClockMs: cmd.nominationClockMs, at: cmd.now }] }
     default:
       return err('WRONG_PHASE', `Unhandled command ${cmd.type}`)
   }
@@ -164,6 +180,27 @@ export function apply(state: DraftState, event: DraftEvent): DraftState {
     }
     case 'NOMINATION_SKIPPED':
       return s
+    case 'DRAFT_PAUSED': {
+      if (s.phase.type === 'awaiting_nomination' || s.phase.type === 'bidding')
+        s.phase = { type: 'paused', inner: s.phase, remainingMs: event.remainingMs }
+      return s
+    }
+    case 'DRAFT_RESUMED': {
+      if (s.phase.type === 'paused') s.phase = { ...s.phase.inner, deadline: event.deadline }
+      return s
+    }
+    case 'TIME_ADDED': {
+      if (s.phase.type === 'awaiting_nomination' || s.phase.type === 'bidding')
+        s.phase = { ...s.phase, deadline: s.phase.deadline + event.ms }
+      else if (s.phase.type === 'paused')
+        s.phase = { ...s.phase, remainingMs: s.phase.remainingMs + event.ms }
+      return s
+    }
+    case 'TIMER_CONFIG_CHANGED': {
+      if (event.bidClockMs !== undefined) s.config.bidClockMs = event.bidClockMs
+      if (event.nominationClockMs !== undefined) s.config.nominationClockMs = event.nominationClockMs
+      return s
+    }
     case 'DRAFT_COMPLETED':
       s.phase = { type: 'complete' }
       return s
