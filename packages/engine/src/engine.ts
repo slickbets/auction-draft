@@ -17,7 +17,7 @@ export function initialState(config: LeagueConfig): DraftState {
 }
 
 import type { Command, DraftEvent, EngineError, ExecuteResult } from './types.js'
-import { openSlotCount, rosterCapacity } from './roster.js'
+import { openSlotCount, rosterCapacity, maxBid, firstOpenSlotFor } from './roster.js'
 
 function err(code: EngineError['code'], message: string): ExecuteResult {
   return { ok: false, error: { code, message } }
@@ -51,6 +51,25 @@ export function execute(state: DraftState, cmd: Command): ExecuteResult {
       events.push(...nextNominationEvents(state, 0, cmd.now))
       return { ok: true, events }
     }
+    case 'NOMINATE': {
+      if (state.phase.type !== 'awaiting_nomination') return err('WRONG_PHASE', 'Not awaiting a nomination')
+      if (state.phase.teamId !== cmd.teamId) return err('NOT_YOUR_NOMINATION', `${state.phase.teamId} is on the clock`)
+      const team = state.teams[cmd.teamId]
+      if (!team) return err('UNKNOWN_TEAM', cmd.teamId)
+      if (!state.available.includes(cmd.playerId)) return err('PLAYER_NOT_AVAILABLE', cmd.playerId)
+      if (!Number.isInteger(cmd.openingBid) || cmd.openingBid < 1) return err('INVALID_AMOUNT', 'Opening bid must be an integer ≥ $1')
+      if (cmd.openingBid > maxBid(team, state.config)) return err('EXCEEDS_MAX_BID', `Max bid ${maxBid(team, state.config)}`)
+      const player = state.config.players.find(p => p.id === cmd.playerId)
+      if (!player) return err('PLAYER_NOT_AVAILABLE', cmd.playerId)
+      if (firstOpenSlotFor(team, player.position, state.config) === null) return err('NO_ELIGIBLE_SLOT', `No open slot for ${player.position}`)
+      return {
+        ok: true,
+        events: [{
+          type: 'PLAYER_NOMINATED', teamId: cmd.teamId, playerId: cmd.playerId,
+          openingBid: cmd.openingBid, deadline: cmd.now + state.config.bidClockMs, at: cmd.now,
+        }],
+      }
+    }
     default:
       return err('WRONG_PHASE', `Unhandled command ${cmd.type}`)
   }
@@ -65,6 +84,12 @@ export function apply(state: DraftState, event: DraftEvent): DraftState {
     case 'NOMINATION_STARTED':
       s.phase = { type: 'awaiting_nomination', teamId: event.teamId, deadline: event.deadline }
       s.pointer = s.config.nominationOrder.indexOf(event.teamId)
+      return s
+    case 'PLAYER_NOMINATED':
+      s.phase = {
+        type: 'bidding', playerId: event.playerId, price: event.openingBid,
+        highBidderId: event.teamId, nominatorId: event.teamId, deadline: event.deadline,
+      }
       return s
     case 'DRAFT_COMPLETED':
       s.phase = { type: 'complete' }
