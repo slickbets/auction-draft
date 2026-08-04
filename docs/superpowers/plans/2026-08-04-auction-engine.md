@@ -1614,6 +1614,15 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ---
 
+## Execution amendments (2026-08-04)
+
+The plan's inline code was the starting point; review rounds during execution amended it. **The shipped code in `packages/engine` is authoritative.** Deltas worth knowing:
+
+- **Tasks 5/6/9/10:** TypeScript narrowing required capturing `const phase = state.phase` after phase-type checks (the plan's direct `state.phase.X` accesses don't survive intervening calls).
+- **Task 9 (bug in plan code):** `PLAYER_NOMINATED` never removes a player from `available` (only SOLD does), so `SALE_UNDONE`'s unconditional in-flight push duplicated ids. Shipped: idempotent guard.
+- **Task 10 (gap in plan code):** EDIT_PICK/ADJUST_BUDGET were blind to an uncharged in-flight high bid — a mid-auction edit could drive a budget negative at SOLD. Shipped: both commands return WRONG_PHASE while a bid is live (bidding or paused-over-bidding); pause+undo is the commissioner's escape hatch. Also: price-only edits preserve slot and roster order; `execute`'s default branch is an exhaustiveness assert.
+- **Task 11 (plan's fuzz config deadlocked):** random bench-hoarding exhausted scarce positions and stranded starting slots (seed 1: DST, then QB) — a real engine edge resolved live by commissioner EDIT_PICK, and a Plan 2 server concern (detect skip-loop → auto-pause). Shipped fuzz league makes K/DST non-benchable and sizes each position's supply above the max consumable while any slot for it stays open (QB 80 / RB 100 / WR 100 / TE 90 / K 15 / DST 15). The suite was also strengthened: pickCommand fuzzes PAUSE/RESUME, EDIT_PICK, ADJUST_BUDGET, ADD_TIME, SET_TIMERS; every seed's event log must `replay(...)` to a `toStrictEqual` match of live state (crash-recovery evidence); seed-tagged assertions; 300s timeout (~156s measured).
+
 ## Spec coverage map (self-check)
 
 | Spec section | Covered by |
