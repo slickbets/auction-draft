@@ -2,13 +2,24 @@
   "name": "auction-draft",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.1.2",
+    "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.20.4",
+    "@types/supertest": "^7.2.1",
+    "pg-mem": "^3.0.14",
+    "socket.io-client": "^4.8.3",
+    "supertest": "^7.2.2",
+    "tsx": "^4.23.5",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"
   }
