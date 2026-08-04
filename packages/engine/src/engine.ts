@@ -44,7 +44,8 @@ export function nextNominationEvents(state: DraftState, fromPointer: number, now
 }
 
 export function execute(state: DraftState, cmd: Command): ExecuteResult {
-  switch (cmd.type) {
+  const cmdType = cmd.type
+  switch (cmdType) {
     case 'START_DRAFT': {
       if (state.phase.type !== 'lobby') return err('NOT_IN_LOBBY', 'Draft already started')
       const events: DraftEvent[] = [{ type: 'DRAFT_STARTED', at: cmd.now }]
@@ -155,8 +156,48 @@ export function execute(state: DraftState, cmd: Command): ExecuteResult {
         }],
       }
     }
+    case 'EDIT_PICK': {
+      const sale = state.sales.find(x => x.overall === cmd.overall)
+      if (!sale) return err('INVALID_EDIT', `No sale #${cmd.overall}`)
+      const toId = cmd.newTeamId ?? sale.teamId
+      const price = cmd.newPrice ?? sale.price
+      if (!Number.isInteger(price) || price < 1) return err('INVALID_EDIT', 'Price must be an integer ≥ $1')
+      const from = state.teams[sale.teamId]!
+      const to = state.teams[toId]
+      if (!to) return err('UNKNOWN_TEAM', toId)
+      const player = state.config.players.find(p => p.id === sale.playerId)!
+      // Simulate: remove from `from`, then slot on `to`.
+      const fromAfter: TeamState = {
+        ...from, budget: from.budget + sale.price,
+        roster: from.roster.filter(r => r.playerId !== sale.playerId),
+      }
+      const toBase = toId === sale.teamId ? fromAfter : to
+      const newSlot = firstOpenSlotFor(toBase, player.position, state.config)
+      if (newSlot === null) return err('INVALID_EDIT', `${toId} has no open slot for ${player.position}`)
+      const toBudgetAfter = toBase.budget - price
+      const toOpenAfter = openSlotCount(toBase, state.config) - 1
+      if (toBudgetAfter < toOpenAfter) return err('INVALID_EDIT', 'Edit would break the budget invariant')
+      if (toId !== sale.teamId && fromAfter.budget < openSlotCount(fromAfter, state.config)) {
+        return err('INVALID_EDIT', 'Edit would break the budget invariant')
+      }
+      return {
+        ok: true,
+        events: [{
+          type: 'PICK_EDITED', overall: cmd.overall, fromTeamId: sale.teamId, toTeamId: toId,
+          oldPrice: sale.price, newPrice: price, newSlot, at: cmd.now,
+        }],
+      }
+    }
+    case 'ADJUST_BUDGET': {
+      const team = state.teams[cmd.teamId]
+      if (!team) return err('UNKNOWN_TEAM', cmd.teamId)
+      if (!Number.isInteger(cmd.delta)) return err('INVALID_ADJUSTMENT', 'Whole dollars only')
+      if (team.budget + cmd.delta < openSlotCount(team, state.config))
+        return err('INVALID_ADJUSTMENT', 'Would break the budget invariant')
+      return { ok: true, events: [{ type: 'BUDGET_ADJUSTED', teamId: cmd.teamId, delta: cmd.delta, at: cmd.now }] }
+    }
     default:
-      return err('WRONG_PHASE', `Unhandled command ${cmd.type}`)
+      return err('WRONG_PHASE', `Unhandled command`)
   }
 }
 
@@ -229,6 +270,22 @@ export function apply(state: DraftState, event: DraftEvent): DraftState {
       s.sales = s.sales.filter(r => r.overall !== sale.overall)
       s.pointer = sale.pointerBefore
       s.phase = { type: 'awaiting_nomination', teamId: sale.nominatorId, deadline: event.nominationDeadline }
+      return s
+    }
+    case 'PICK_EDITED': {
+      const sale = s.sales.find(x => x.overall === event.overall)!
+      const from = s.teams[event.fromTeamId]!
+      from.roster = from.roster.filter(r => r.playerId !== sale.playerId)
+      from.budget += event.oldPrice
+      const to = s.teams[event.toTeamId]!
+      to.roster.push({ playerId: sale.playerId, price: event.newPrice, slot: event.newSlot })
+      to.budget -= event.newPrice
+      sale.teamId = event.toTeamId
+      sale.price = event.newPrice
+      return s
+    }
+    case 'BUDGET_ADJUSTED': {
+      s.teams[event.teamId]!.budget += event.delta
       return s
     }
     default:
