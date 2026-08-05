@@ -46,6 +46,39 @@ describe('RoomManager', () => {
     expect(await manager.getOrLoad('nope')).toBeNull()
   })
 
+  it('deduplicates concurrent loads into one Room', async () => {
+    const created = await leagues.create('My League', goodConfig())
+    // Two Rooms for one league would double-arm timers and double-write events.
+    const [a, b, c] = await Promise.all([
+      manager.getOrLoad(created.id),
+      manager.getOrLoad(created.id),
+      manager.getOrLoad(created.id),
+    ])
+    expect(a).not.toBeNull()
+    expect(b).toBe(a)
+    expect(c).toBe(a)
+    await manager.closeAll()
+  })
+
+  it('a failed load evicts only its own cache entry, leaving a later room intact', async () => {
+    const created = await leagues.create('My League', goodConfig())
+    const realFrozen = leagues.frozenConfig.bind(leagues)
+    let first = true
+    leagues.frozenConfig = async (id: string) => {
+      if (first) {
+        first = false
+        throw new Error('transient failure')
+      }
+      return realFrozen(id)
+    }
+    expect(await manager.getOrLoad(created.id)).toBeNull()
+    // The failure must not wedge the cache, and the retry's room must survive it.
+    const room = await manager.getOrLoad(created.id)
+    expect(room).not.toBeNull()
+    expect(await manager.getOrLoad(created.id)).toBe(room)
+    await manager.closeAll()
+  })
+
   it('loads lazily and caches: repeated getOrLoad returns the same Room', async () => {
     const created = await leagues.create('My League', goodConfig())
     const a = await manager.getOrLoad(created.id)
