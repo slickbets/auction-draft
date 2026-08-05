@@ -25,8 +25,9 @@ export const StoredConfigSchema = z
     const order = [...cfg.nominationOrder].sort()
     if (JSON.stringify(order) !== JSON.stringify([...ids].sort()))
       ctx.addIssue({ code: 'custom', message: 'nominationOrder must be a permutation of team ids' })
-    if (cfg.budget < rosterCapacity(cfg.rosterTemplate))
-      ctx.addIssue({ code: 'custom', message: `budget must be at least roster capacity (${rosterCapacity(cfg.rosterTemplate)})` })
+    const minBudget = rosterCapacity(cfg.rosterTemplate) * cfg.teams.length
+    if (cfg.budget < minBudget)
+      ctx.addIssue({ code: 'custom', message: `budget must be at least ${minBudget}` })
   })
 export type StoredConfig = z.infer<typeof StoredConfigSchema>
 
