@@ -40,4 +40,21 @@ describe('PgEventStore', () => {
     expect(seq).toBe(0)
     expect(events).toEqual([])
   })
+
+  it('surfaces the original error and discards the client when rollback fails', async () => {
+    const realConnect = pool.connect.bind(pool)
+    const client: any = await realConnect()
+    const released: unknown[] = []
+    client.release = (arg?: unknown) => released.push(arg)
+    const origQuery = client.query.bind(client)
+    client.query = async (sql: string, params?: unknown[]) => {
+      if (sql === 'ROLLBACK') throw new Error('connection terminated')
+      return origQuery(sql, params)
+    }
+    const failing = new PgEventStore({ connect: async () => client } as unknown as Pool)
+    await failing.append('l1', 0, [ev(1)])
+    // Same seq again -> unique violation -> ROLLBACK throws -> original error must survive
+    await expect(failing.append('l1', 0, [ev(2)])).rejects.toBeInstanceOf(SeqConflictError)
+    expect(released[released.length - 1]).toBe(true) // client discarded, not recycled
+  })
 })

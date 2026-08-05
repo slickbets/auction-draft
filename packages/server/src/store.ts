@@ -4,6 +4,7 @@ import type { DraftEvent } from '@auction/engine'
 export class SeqConflictError extends Error {
   constructor(leagueId: string, seq: number) {
     super(`seq conflict for league ${leagueId} at ${seq}`)
+    this.name = 'SeqConflictError'
   }
 }
 
@@ -17,6 +18,7 @@ export class PgEventStore implements EventStore {
 
   async append(leagueId: string, expectedSeq: number, events: DraftEvent[]): Promise<number> {
     const client = await this.pool.connect()
+    let release = () => client.release()
     let seq = expectedSeq
     try {
       await client.query('BEGIN')
@@ -30,11 +32,19 @@ export class PgEventStore implements EventStore {
       await client.query('COMMIT')
       return seq
     } catch (err) {
-      await client.query('ROLLBACK')
+      let rollbackFailed = false
+      try {
+        await client.query('ROLLBACK')
+      } catch {
+        // The connection may be stuck in an aborted transaction; discard it below
+        // rather than returning it to the pool for the next caller to trip over.
+        rollbackFailed = true
+      }
+      release = rollbackFailed ? () => client.release(true) : () => client.release()
       if (isUniqueViolation(err)) throw new SeqConflictError(leagueId, seq)
       throw err
     } finally {
-      client.release()
+      release()
     }
   }
 
@@ -53,5 +63,5 @@ export class PgEventStore implements EventStore {
 
 function isUniqueViolation(err: unknown): boolean {
   const e = err as { code?: string; message?: string }
-  return e?.code === '23505' || /duplicate key|unique/i.test(e?.message ?? '')
+  return e?.code === '23505' || /duplicate key value violates unique constraint|unique constraint|duplicate key/i.test(e?.message ?? '')
 }
