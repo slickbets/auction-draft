@@ -25,9 +25,10 @@ export const StoredConfigSchema = z
     const order = [...cfg.nominationOrder].sort()
     if (JSON.stringify(order) !== JSON.stringify([...ids].sort()))
       ctx.addIssue({ code: 'custom', message: 'nominationOrder must be a permutation of team ids' })
-    const minBudget = rosterCapacity(cfg.rosterTemplate) * cfg.teams.length
-    if (cfg.budget < minBudget)
-      ctx.addIssue({ code: 'custom', message: `budget must be at least ${minBudget}` })
+    // Per team, not league-wide: each team spends its own budget and must be able to
+    // fill every roster slot at $1, which is exactly the engine's max-bid invariant.
+    if (cfg.budget < rosterCapacity(cfg.rosterTemplate))
+      ctx.addIssue({ code: 'custom', message: `budget must be at least roster capacity (${rosterCapacity(cfg.rosterTemplate)})` })
   })
 export type StoredConfig = z.infer<typeof StoredConfigSchema>
 

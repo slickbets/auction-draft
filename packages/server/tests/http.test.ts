@@ -41,7 +41,8 @@ describe('http api', () => {
     const res = await request(app).post('/api/leagues').set('x-create-key', 'sekret').send({ name: 'L', config: CONFIG })
     expect(res.status).toBe(201)
     expect(res.body.links.teams).toHaveLength(2)
-    const bad = await request(app).post('/api/leagues').set('x-create-key', 'sekret').send({ name: 'L', config: { ...CONFIG, budget: 1 } })
+    // A superRefine failure (not just a primitive one) must still surface as 400.
+    const bad = await request(app).post('/api/leagues').set('x-create-key', 'sekret').send({ name: 'L', config: { ...CONFIG, nominationOrder: ['T1'] } })
     expect(bad.status).toBe(400)
   })
 
