@@ -15,6 +15,7 @@ export class Room {
   private chain: Promise<unknown> = Promise.resolve()
   private timer: NodeJS.Timeout | null = null
   private skipStreak = 0
+  private closed = false
 
   protected constructor(
     readonly leagueId: string,
@@ -26,7 +27,11 @@ export class Room {
   static async create(leagueId: string, config: LeagueConfig, deps: RoomDeps): Promise<Room> {
     const { seq, events } = await deps.store.load(leagueId)
     const state = replay(config, events)
-    const room = new Room(leagueId, state, seq, deps)
+    const room = new this(leagueId, state, seq, deps)
+    if (state.phase.type === 'awaiting_nomination' || state.phase.type === 'bidding') {
+      const last = events[events.length - 1]!
+      await room.dispatch({ type: 'PAUSE' }, last.at)
+    }
     room.armTimer()
     return room
   }
@@ -50,7 +55,11 @@ export class Room {
     if (!r.ok) return r
     this.seq = await this.deps.store.append(this.leagueId, this.seq, r.events)
     for (const e of r.events) this.st = apply(this.st, e)
-    this.deps.broadcast(this.leagueId, this.seq, r.events)
+    try {
+      this.deps.broadcast(this.leagueId, this.seq, r.events)
+    } catch {
+      /* a subscriber must not stall the draft clock */
+    }
     this.watchdog(r.events)
     this.armTimer()
     return r
@@ -61,6 +70,7 @@ export class Room {
       clearTimeout(this.timer)
       this.timer = null
     }
+    if (this.closed) return
     const phase = this.st.phase
     if (phase.type !== 'awaiting_nomination' && phase.type !== 'bidding') return
     const delay = Math.max(0, phase.deadline - this.deps.clock())
@@ -79,7 +89,11 @@ export class Room {
     }
     if (this.skipStreak >= 2 * this.st.config.teams.length) {
       this.skipStreak = 0
-      this.deps.notify(this.leagueId, { type: 'skip_loop' })
+      try {
+        this.deps.notify(this.leagueId, { type: 'skip_loop' })
+      } catch {
+        /* a subscriber must not stall the draft clock */
+      }
       void this.dispatch({ type: 'PAUSE' }).catch(() => {})
     }
   }
@@ -90,6 +104,7 @@ export class Room {
   }
 
   close(): void {
+    this.closed = true
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
   }

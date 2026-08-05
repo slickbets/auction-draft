@@ -16,6 +16,11 @@ export class MemEventStore implements EventStore {
 
   async load(leagueId: string): Promise<{ seq: number; events: DraftEvent[] }> {
     const events = [...(this.streams.get(leagueId) ?? [])]
+    // events.length is the max seq here only because append() above refuses any
+    // non-contiguous write (expectedSeq must equal the current stream length) —
+    // there are never gaps or out-of-order entries to derive a "real" max from,
+    // unlike PgEventStore, which computes max(seq) from a table that could in
+    // principle contain them.
     return { seq: events.length, events }
   }
 }

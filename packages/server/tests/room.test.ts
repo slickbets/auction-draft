@@ -88,4 +88,18 @@ describe('Room', () => {
     if (!errs[0]!.ok) expect(errs[0]!.error.code).toMatch(/STALE_PRICE|ALREADY_HIGH_BIDDER/)
     room.close()
   })
+
+  it('close() is terminal: queued work cannot arm a new timer', async () => {
+    const room = await Room.create('l1', config(), deps)
+    await room.dispatch({ type: 'START_DRAFT' })
+    const queued = room.dispatch({ type: 'NOMINATE', teamId: 'T1', playerId: 'QB1', openingBid: 1 })
+    room.close()
+    await queued
+    await room.idle()
+    // If a timer were armed post-close, this would fire CLOCK_EXPIRED and change phase.
+    const before = JSON.stringify(room.state.phase)
+    nowMs += 60_000
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(JSON.stringify(room.state.phase)).toBe(before)
+  })
 })
