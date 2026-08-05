@@ -26,14 +26,17 @@ export function toPlayerRows(map: SleeperPlayerMap): PlayerRow[] {
   const rows: PlayerRow[] = []
   for (const [sleeperId, p] of Object.entries(map)) {
     const position = POSITION_MAP[p.position ?? '']
-    if (!position || !p.full_name) continue
+    if (!position || !p.full_name || !sleeperId) continue
+    // `||` not `??` throughout: Sleeper sends empty strings as well as nulls, and
+    // freeze() rejects a pool containing an empty name/team, which would block the
+    // draft from starting. Likewise a non-finite rank must not reach an int column.
     rows.push({
       sleeperId,
       name: p.full_name,
       position,
-      nflTeam: p.team ?? 'FA',
-      status: p.status ?? 'Unknown',
-      searchRank: p.search_rank ?? UNRANKED,
+      nflTeam: p.team || 'FA',
+      status: p.status || 'Unknown',
+      searchRank: Number.isFinite(p.search_rank) ? (p.search_rank as number) : UNRANKED,
     })
   }
   return rows
@@ -48,14 +51,24 @@ export async function fetchSleeperPlayers(fetchFn: typeof fetch = fetch): Promis
 export class PlayerRepo {
   constructor(private pool: Pool) {}
 
-  async upsertAll(rows: PlayerRow[]): Promise<number> {
-    for (const r of rows) {
+  /** Sleeper ships ~11k players; one round trip per row would make the
+   *  commissioner's draft-morning refresh take minutes, so upsert in chunks. */
+  async upsertAll(rows: PlayerRow[], chunkSize = 250): Promise<number> {
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      const chunk = rows.slice(i, i + chunkSize)
+      const values: unknown[] = []
+      const tuples = chunk.map((r, j) => {
+        const b = j * 6
+        values.push(r.sleeperId, r.name, r.position, r.nflTeam, r.status, r.searchRank)
+        return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, now())`
+      })
       await this.pool.query(
         `INSERT INTO players (sleeper_id, name, position, nfl_team, status, search_rank, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, now())
+         VALUES ${tuples.join(', ')}
          ON CONFLICT (sleeper_id) DO UPDATE
-         SET name = $2, position = $3, nfl_team = $4, status = $5, search_rank = $6, updated_at = now()`,
-        [r.sleeperId, r.name, r.position, r.nflTeam, r.status, r.searchRank],
+         SET name = EXCLUDED.name, position = EXCLUDED.position, nfl_team = EXCLUDED.nfl_team,
+             status = EXCLUDED.status, search_rank = EXCLUDED.search_rank, updated_at = now()`,
+        values,
       )
     }
     return rows.length
