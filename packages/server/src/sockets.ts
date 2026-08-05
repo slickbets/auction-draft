@@ -34,6 +34,22 @@ export function attachSockets(io: Server, deps: SocketDeps): void {
     io.to(`league:${leagueId}`).emit('presence', { connected: list })
   }
 
+  const snapshotFor = (room: { lastSeq: number; state: unknown }, p: Principal) => ({
+    seq: room.lastSeq,
+    state: room.state,
+    role: p.role,
+    ...(p.role === 'manager' ? { teamId: p.teamId } : {}),
+  })
+
+  /** A reload rebuilds the room from a new config (e.g. the player pool frozen at
+   *  draft start). Clients that joined earlier hold a snapshot whose config is now
+   *  stale, and events never carry config — so push a fresh snapshot to each. */
+  const resyncLeague = (leagueId: string, room: { lastSeq: number; state: unknown }) => {
+    for (const [socketId, p] of connected.get(leagueId) ?? []) {
+      io.sockets.sockets.get(socketId)?.emit('snapshot', snapshotFor(room, p))
+    }
+  }
+
   io.use(async (socket, next) => {
     const token = socket.handshake.auth?.token
     const principal = typeof token === 'string' ? await deps.leagues.resolveToken(token) : null
@@ -58,12 +74,7 @@ export function attachSockets(io: Server, deps: SocketDeps): void {
       await socket.join(`league:${leagueId}`)
       if (!connected.has(leagueId)) connected.set(leagueId, new Map())
       connected.get(leagueId)!.set(socket.id, principal)
-      socket.emit('snapshot', {
-        seq: room.lastSeq,
-        state: room.state,
-        role: principal.role,
-        ...(principal.role === 'manager' ? { teamId: principal.teamId } : {}),
-      })
+      socket.emit('snapshot', snapshotFor(room, principal))
       presence(leagueId)
       return room
     })()
@@ -89,6 +100,7 @@ export function attachSockets(io: Server, deps: SocketDeps): void {
         await deps.leagues.freeze(leagueId, pool)
         target = await deps.rooms.reload(leagueId)
         if (!target) return deny(ack, 'NO_LEAGUE', 'league not found')
+        resyncLeague(leagueId, target)
       }
 
       try {

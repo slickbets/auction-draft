@@ -80,6 +80,12 @@ describe('full draft over real sockets', () => {
     expect(replay(frozen, events)).toStrictEqual(room!.state)
     expect(room!.state.phase.type).toBe('complete')
 
+    // bots must have actually driven the draft, not just ridden the auto-nominate backstop
+    const botCommands = bots.reduce((n, b) => n + b.sent(), 0)
+    expect(botCommands).toBeGreaterThan(20) // bots nominated/bid for real, not just the auto-nominate backstop
+    const contested = final.sales.filter(s => s.price > 1).length
+    expect(contested).toBeGreaterThan(0) // at least some players were actually bid up
+
     for (const b of bots) b.socket.disconnect()
     commish.disconnect()
     await server.close()
