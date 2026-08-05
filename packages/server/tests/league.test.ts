@@ -87,4 +87,14 @@ describe('LeagueService', () => {
     const stored = await svc.frozenConfig(created.id)
     expect(stored!.players).toEqual(ra.players)
   })
+
+  it('freeze snapshots players once and is idempotent', async () => {
+    const created = await svc.create('My League', goodConfig())
+    expect(await svc.frozenConfig(created.id)).toBeNull()
+    const frozen = await svc.freeze(created.id, POOL)
+    expect(frozen.players).toEqual(POOL)
+    const again = await svc.freeze(created.id, [])
+    expect(again.players).toEqual(POOL) // second freeze ignored, and not rejected by pool validation
+    expect((await svc.frozenConfig(created.id))!.players).toEqual(POOL)
+  })
 })
