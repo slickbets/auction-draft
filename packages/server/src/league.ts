@@ -126,7 +126,9 @@ export class LeagueService {
       'UPDATE leagues SET config = $1, frozen_at = now() WHERE id = $2 AND frozen_at IS NULL',
       [JSON.stringify(frozen), id],
     )
-    if (r.rowCount === 0) {
+    // Anything other than exactly one updated row means we did not win the race
+    // (pg types rowCount as nullable); read back whichever pool actually landed.
+    if (r.rowCount !== 1) {
       const stored = await this.get(id)
       if (!stored) throw new Error(`no league ${id}`)
       return stored.config as LeagueConfig
@@ -146,7 +148,7 @@ const PlayerInfoSchema = z.object({
   name: z.string().min(1),
   position: z.enum(POSITIONS),
   nflTeam: z.string().min(1),
-  rank: z.number().int(),
+  rank: z.number().finite(), // engine treats rank as "lower = better"; ADP values may be fractional
 })
 
 /** The player pool is the one part of LeagueConfig that reaches the engine unvalidated. */
