@@ -113,6 +113,23 @@ describe('socket gateway', () => {
     expect(received.flatMap(e => e.events.map((x: any) => x.type))).toContain('PLAYER_NOMINATED')
   })
 
+  it('acks a command sent immediately on connect, before the snapshot arrives', async () => {
+    // socket.io drops events with no listener, so a client that does not wait for
+    // the snapshot must still get an ack rather than hanging forever.
+    const socket = client(`http://localhost:${port}`, { auth: { token: tokens.commissioner }, transports: ['websocket'] })
+    open.push(socket)
+    const acked = await new Promise<any>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('no ack within 2s')), 2000)
+      socket.on('connect', () => {
+        socket.emit('command', { type: 'START_DRAFT' }, (res: unknown) => {
+          clearTimeout(timer)
+          resolve(res)
+        })
+      })
+    })
+    expect(acked.ok).toBe(true)
+  })
+
   it('broadcasts presence on connect and disconnect', async () => {
     const c = await connect(port, tokens.commissioner)
     open.push(c.socket)

@@ -42,27 +42,36 @@ export function attachSockets(io: Server, deps: SocketDeps): void {
     next()
   })
 
-  io.on('connection', async (socket: Socket) => {
+  io.on('connection', (socket: Socket) => {
     const principal = (socket.data as { principal: Principal }).principal
     const { leagueId } = principal
-    const room = await deps.rooms.getOrLoad(leagueId)
-    if (!room) {
-      socket.disconnect(true)
-      return
-    }
-    await socket.join(`league:${leagueId}`)
-    if (!connected.has(leagueId)) connected.set(leagueId, new Map())
-    connected.get(leagueId)!.set(socket.id, principal)
-    socket.emit('snapshot', {
-      seq: room.lastSeq,
-      state: room.state,
-      role: principal.role,
-      ...(principal.role === 'manager' ? { teamId: principal.teamId } : {}),
-    })
-    presence(leagueId)
+
+    // Join/snapshot needs I/O, but socket.io DROPS events that arrive before a
+    // listener exists — a client bidding the instant it connects would get no ack
+    // at all. So register listeners synchronously and have them await readiness.
+    const ready = (async () => {
+      const room = await deps.rooms.getOrLoad(leagueId)
+      if (!room) {
+        socket.disconnect(true)
+        return null
+      }
+      await socket.join(`league:${leagueId}`)
+      if (!connected.has(leagueId)) connected.set(leagueId, new Map())
+      connected.get(leagueId)!.set(socket.id, principal)
+      socket.emit('snapshot', {
+        seq: room.lastSeq,
+        state: room.state,
+        role: principal.role,
+        ...(principal.role === 'manager' ? { teamId: principal.teamId } : {}),
+      })
+      presence(leagueId)
+      return room
+    })()
+    ready.catch(() => socket.disconnect(true))
 
     socket.on('command', async (payload: unknown, ack: Ack) => {
       if (typeof ack !== 'function') return
+      if (!(await ready.catch(() => null))) return deny(ack, 'NO_LEAGUE', 'league not found')
       let cmd: WireCommand
       try {
         cmd = parseWireCommand(payload)
@@ -93,8 +102,10 @@ export function attachSockets(io: Server, deps: SocketDeps): void {
     })
 
     socket.on('disconnect', () => {
-      connected.get(leagueId)?.delete(socket.id)
-      presence(leagueId)
+      void ready.catch(() => null).then(() => {
+        connected.get(leagueId)?.delete(socket.id)
+        presence(leagueId)
+      })
     })
   })
 }
