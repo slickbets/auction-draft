@@ -1,0 +1,134 @@
+import { describe, it, expect, beforeEach } from 'vitest'
+import type { Pool } from 'pg'
+import { newTestPool } from './helpers/testDb.js'
+import { migrate } from '../src/migrations.js'
+import { MemEventStore } from './helpers/memStore.js'
+import { LeagueService } from '../src/league.js'
+import { RoomManager } from '../src/rooms.js'
+import type { RoomDeps } from '../src/room.js'
+import type { PlayerInfo } from '@auction/engine'
+
+const TEMPLATE = [{ name: 'QB', eligible: ['QB'], count: 1 }]
+const teams = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `T${i + 1}`, name: `Team ${i + 1}` }))
+const goodConfig = () => ({
+  teams: teams(2),
+  budget: 200,
+  rosterTemplate: TEMPLATE,
+  bidClockMs: 10_000,
+  nominationClockMs: 30_000,
+  nominationOrder: teams(2).map(t => t.id),
+  nominationExpiryPolicy: 'auto_nominate',
+})
+const POOL: PlayerInfo[] = [{ id: 'p1', name: 'QB One', position: 'QB', nflTeam: 'SF', rank: 1 }]
+
+describe('RoomManager', () => {
+  let pool: Pool
+  let leagues: LeagueService
+  let deps: RoomDeps
+  let manager: RoomManager
+
+  beforeEach(async () => {
+    pool = newTestPool()
+    await migrate(pool)
+    leagues = new LeagueService(pool, 'http://localhost:3000')
+    deps = {
+      store: new MemEventStore(),
+      broadcast: () => {},
+      notify: () => {},
+      clock: () => Date.now(),
+    }
+    manager = new RoomManager(deps, leagues)
+  })
+
+  it('returns null for an unknown league', async () => {
+    expect(await manager.getOrLoad('nope')).toBeNull()
+    // A failed load must not wedge the cache: a second call tries again and still fails cleanly.
+    expect(await manager.getOrLoad('nope')).toBeNull()
+  })
+
+  it('deduplicates concurrent loads into one Room', async () => {
+    const created = await leagues.create('My League', goodConfig())
+    // Two Rooms for one league would double-arm timers and double-write events.
+    const [a, b, c] = await Promise.all([
+      manager.getOrLoad(created.id),
+      manager.getOrLoad(created.id),
+      manager.getOrLoad(created.id),
+    ])
+    expect(a).not.toBeNull()
+    expect(b).toBe(a)
+    expect(c).toBe(a)
+    await manager.closeAll()
+  })
+
+  it('a failed load evicts only its own cache entry, leaving a later room intact', async () => {
+    const created = await leagues.create('My League', goodConfig())
+    const realFrozen = leagues.frozenConfig.bind(leagues)
+    let first = true
+    leagues.frozenConfig = async (id: string) => {
+      if (first) {
+        first = false
+        throw new Error('transient failure')
+      }
+      return realFrozen(id)
+    }
+    expect(await manager.getOrLoad(created.id)).toBeNull()
+    // The failure must not wedge the cache, and the retry's room must survive it.
+    const room = await manager.getOrLoad(created.id)
+    expect(room).not.toBeNull()
+    expect(await manager.getOrLoad(created.id)).toBe(room)
+    await manager.closeAll()
+  })
+
+  it('loads lazily and caches: repeated getOrLoad returns the same Room', async () => {
+    const created = await leagues.create('My League', goodConfig())
+    const a = await manager.getOrLoad(created.id)
+    const b = await manager.getOrLoad(created.id)
+    expect(a).not.toBeNull()
+    expect(b).toBe(a)
+  })
+
+  it('resolves an unfrozen league to the stored config with an empty player pool (lobby)', async () => {
+    const created = await leagues.create('My League', goodConfig())
+    const room = await manager.getOrLoad(created.id)
+    expect(room!.state.config.players).toEqual([])
+    expect(room!.state.phase).toEqual({ type: 'lobby' })
+  })
+
+  it('resolves a frozen league to the frozen config, including its player pool', async () => {
+    const created = await leagues.create('My League', goodConfig())
+    await leagues.freeze(created.id, POOL)
+    const room = await manager.getOrLoad(created.id)
+    expect(room!.state.config.players).toEqual(POOL)
+  })
+
+  it('reload closes the existing room and re-creates it with the current (post-freeze) config', async () => {
+    const created = await leagues.create('My League', goodConfig())
+    const before = await manager.getOrLoad(created.id)
+    expect(before!.state.config.players).toEqual([])
+    await leagues.freeze(created.id, POOL)
+    const after = await manager.reload(created.id)
+    expect(after).not.toBeNull()
+    expect(after).not.toBe(before)
+    expect(after!.state.config.players).toEqual(POOL)
+    expect(await manager.getOrLoad(created.id)).toBe(after)
+  })
+
+  it('concurrent reloads yield exactly one live room, and it is the cached one', async () => {
+    const created = await leagues.create('My League', goodConfig())
+    await manager.getOrLoad(created.id)
+    const [a, b] = await Promise.all([manager.reload(created.id), manager.reload(created.id)])
+    expect(a).not.toBeNull()
+    expect(b).toBe(a) // both callers see the same room
+    expect(await manager.getOrLoad(created.id)).toBe(a) // and it is the one cached
+    await manager.closeAll()
+  })
+
+  it('closeAll clears every room so the next getOrLoad reloads fresh', async () => {
+    const created = await leagues.create('My League', goodConfig())
+    const a = await manager.getOrLoad(created.id)
+    await manager.closeAll()
+    const b = await manager.getOrLoad(created.id)
+    expect(b).not.toBeNull()
+    expect(b).not.toBe(a)
+  })
+})
