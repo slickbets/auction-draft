@@ -7,7 +7,7 @@ export type WireCommand = { [K in Command['type']]: Omit<Extract<Command, { type
 export interface RoomDeps {
   store: EventStore
   broadcast: (leagueId: string, seq: number, events: DraftEvent[]) => void
-  notify: (leagueId: string, notice: { type: 'skip_loop' }) => void
+  notify: (leagueId: string, notice: { type: 'skip_loop' | 'clock_stalled' }) => void
   clock: () => number
 }
 
@@ -76,9 +76,16 @@ export class Room {
     const delay = Math.max(0, phase.deadline - this.deps.clock())
     this.timer = setTimeout(() => {
       // CLOCK_NOT_EXPIRED here means a bid raced in and re-armed; benign.
-      // The catch prevents an unhandled rejection if the store is down; the
-      // draft simply stalls until a client command surfaces the error.
-      void this.dispatch({ type: 'CLOCK_EXPIRED' }).catch(() => {})
+      // A store failure here leaves the auction clock dead with no further
+      // dispatch to surface it, so log it and notify subscribers directly.
+      void this.dispatch({ type: 'CLOCK_EXPIRED' }).catch(err => {
+        console.error(`clock dispatch failed for ${this.leagueId}`, err)
+        try {
+          this.deps.notify(this.leagueId, { type: 'clock_stalled' })
+        } catch {
+          /* a subscriber must not mask the original failure */
+        }
+      })
     }, delay)
   }
 

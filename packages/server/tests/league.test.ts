@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import type { Pool } from 'pg'
+import { ZodError } from 'zod'
 import { newTestPool } from './helpers/testDb.js'
 import { migrate } from '../src/migrations.js'
 import { LeagueService } from '../src/league.js'
@@ -67,7 +68,8 @@ describe('LeagueService', () => {
     for (const { label, mutate, match } of cases) {
       const cfg = JSON.parse(JSON.stringify(goodConfig()))
       mutate(cfg)
-      await expect(svc.create('X', cfg), label).rejects.toThrow(match ?? /./)
+      if (match) await expect(svc.create('X', cfg), label).rejects.toThrow(match)
+      else await expect(svc.create('X', cfg), label).rejects.toBeInstanceOf(ZodError)
     }
   })
 

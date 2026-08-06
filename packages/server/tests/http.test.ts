@@ -56,4 +56,26 @@ describe('http api', () => {
     expect(ok.body).toEqual({ updated: 42 })
     expect(synced).toBe(1)
   })
+
+  it('returns 500 instead of crashing when league creation fails', async () => {
+    const boom = createApp({
+      leagues: { create: async () => { throw new Error('postgres is down') }, resolveToken: async () => null } as any,
+      players: { repo: {} as any, sync: async () => 0 },
+      createKey: 'sekret',
+    })
+    const res = await request(boom).post('/api/leagues').set('x-create-key', 'sekret').send({ name: 'L', config: CONFIG })
+    expect(res.status).toBe(500)
+  })
+
+  it('returns 500 instead of crashing when the player sync fails', async () => {
+    const created = await leagues.create('L', CONFIG)
+    const token = created.links.commissioner.split('#')[1]!
+    const boom = createApp({
+      leagues,
+      players: { repo: {} as any, sync: async () => { throw new Error('sleeper 503') } },
+      createKey: 'sekret',
+    })
+    const res = await request(boom).post(`/api/leagues/${created.id}/refresh-players`).set('authorization', `Bearer ${token}`)
+    expect(res.status).toBe(500)
+  })
 })

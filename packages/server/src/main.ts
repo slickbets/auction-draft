@@ -1,4 +1,5 @@
 import { createServer, type Server as HttpServer } from 'node:http'
+import { pathToFileURL } from 'node:url'
 import { Server } from 'socket.io'
 import cron from 'node-cron'
 import type { Pool } from 'pg'
@@ -42,21 +43,39 @@ export async function buildServer(env: Env, pool: Pool): Promise<{ http: HttpSer
   }
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href
 if (isMain) {
   const env = loadEnv()
   const pool = createPool(env.DATABASE_URL)
   const server = await buildServer(env, pool)
-  if (env.SLEEPER_SYNC === '1') {
-    const count = await pool.query('SELECT count(*)::int AS n FROM players')
-    if (count.rows[0].n === 0) {
-      const sync = async () => new PlayerRepo(pool).upsertAll(toPlayerRows(await fetchSleeperPlayers()))
-      console.log(`seeded players: ${await sync()}`)
-    }
-    cron.schedule('0 9 * * *', async () => {
-      const n = await new PlayerRepo(pool).upsertAll(toPlayerRows(await fetchSleeperPlayers()))
-      console.log(`daily player sync: ${n}`)
+
+  // Listen first: on a fresh DB, a Sleeper outage during the boot seed must not
+  // prevent the server from listening, or Railway's healthcheck crash-loops it.
+  server.http.listen(env.PORT, () => console.log(`auction-draft server on :${env.PORT}`))
+
+  for (const sig of ['SIGTERM', 'SIGINT'] as const) {
+    process.on(sig, () => {
+      void server.close().finally(() => process.exit(0))
     })
   }
-  server.http.listen(env.PORT, () => console.log(`auction-draft server on :${env.PORT}`))
+
+  if (env.SLEEPER_SYNC === '1') {
+    try {
+      const count = await pool.query('SELECT count(*)::int AS n FROM players')
+      if (count.rows[0].n === 0) {
+        const sync = async () => new PlayerRepo(pool).upsertAll(toPlayerRows(await fetchSleeperPlayers()))
+        console.log(`seeded players: ${await sync()}`)
+      }
+    } catch (err) {
+      console.error('player sync failed', err)
+    }
+    cron.schedule('0 9 * * *', async () => {
+      try {
+        const n = await new PlayerRepo(pool).upsertAll(toPlayerRows(await fetchSleeperPlayers()))
+        console.log(`daily player sync: ${n}`)
+      } catch (err) {
+        console.error('player sync failed', err)
+      }
+    })
+  }
 }

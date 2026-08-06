@@ -17,16 +17,16 @@ Runtime decision (recorded): the server runs under `tsx` (no build step). Revisi
 
 ## Before Starting a Draft
 
-After first boot (or at any time), hit the refresh-players endpoint to ensure the Sleeper pool is populated:
+After first boot (or at any time), hit the refresh-players endpoint to ensure the Sleeper pool is populated. This route requires the commissioner token from that league's invite link (the fragment after `#`), not the create key:
 
 ```bash
-curl -X POST https://<domain>/api/admin/refresh-players \
-  -H 'x-create-key: $CREATE_KEY'
+curl -X POST "https://<domain>/api/leagues/<leagueId>/refresh-players" \
+  -H "authorization: Bearer <commissioner-token-from-the-invite-link-fragment>"
 ```
 
-Check that the response contains player names. **Do not start a draft until the players table is non-empty** — if the pool is empty, `START_DRAFT` will be rejected with error code `NO_PLAYERS`.
+Check that the response contains an `updated` count. **Do not start a draft until the players table has enough players to fill every roster** — if the pool is too small, `START_DRAFT` will be rejected with error code `NO_PLAYERS`.
 
-Alternatively, wait for the daily 09:00 UTC cron to auto-sync if `SLEEPER_SYNC=1` (the default).
+`SLEEPER_SYNC` must be set to `1` for the boot seed and the daily 09:00 UTC cron to run — it is **not** on by default (`env.ts` defaults it to `'0'`). Set it explicitly in Railway's Variables if you want either.
 
 ## Verifying a Real Draft
 

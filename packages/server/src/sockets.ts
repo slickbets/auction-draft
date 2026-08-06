@@ -1,5 +1,6 @@
 import type { Server, Socket } from 'socket.io'
 import { ZodError } from 'zod'
+import { rosterCapacity } from '@auction/engine'
 import type { LeagueService, Principal } from './league.js'
 import type { PlayerRepo } from './players.js'
 import type { RoomManager } from './rooms.js'
@@ -10,6 +11,7 @@ export interface SocketDeps {
   leagues: LeagueService
   rooms: RoomManager
   playerRepo: PlayerRepo
+  clockNow?: () => number
 }
 
 type Ack = (result: { ok: true } | { ok: false; error: { code: string; message: string } }) => void
@@ -26,6 +28,7 @@ function authorized(principal: Principal, cmd: WireCommand): boolean {
 
 export function attachSockets(io: Server, deps: SocketDeps): void {
   const connected = new Map<string, Map<string, Principal>>() // leagueId -> socketId -> principal
+  const clockNow = deps.clockNow ?? (() => Date.now())
 
   const presence = (leagueId: string) => {
     const list = [...(connected.get(leagueId)?.values() ?? [])].map(p =>
@@ -34,10 +37,14 @@ export function attachSockets(io: Server, deps: SocketDeps): void {
     io.to(`league:${leagueId}`).emit('presence', { connected: list })
   }
 
+  // Deadlines are absolute server epoch ms, so a client renders the correct countdown
+  // only if it knows the server's clock at snapshot time — a skewed client clock would
+  // otherwise misrender it.
   const snapshotFor = (room: { lastSeq: number; state: unknown }, p: Principal) => ({
     seq: room.lastSeq,
     state: room.state,
     role: p.role,
+    now: clockNow(),
     ...(p.role === 'manager' ? { teamId: p.teamId } : {}),
   })
 
@@ -96,7 +103,11 @@ export function attachSockets(io: Server, deps: SocketDeps): void {
 
       if (cmd.type === 'START_DRAFT' && !(await deps.leagues.frozenConfig(leagueId))) {
         const pool = await deps.playerRepo.listForDraft()
-        if (pool.length === 0) return deny(ack, 'NO_PLAYERS', 'player pool is empty — refresh players first')
+        const rec = await deps.leagues.get(leagueId)
+        const needed = rec ? rec.config.teams.length * rosterCapacity(rec.config.rosterTemplate) : 1
+        if (pool.length < needed) {
+          return deny(ack, 'NO_PLAYERS', `player pool has ${pool.length}, need at least ${needed} — refresh players first`)
+        }
         await deps.leagues.freeze(leagueId, pool)
         target = await deps.rooms.reload(leagueId)
         if (!target) return deny(ack, 'NO_LEAGUE', 'league not found')

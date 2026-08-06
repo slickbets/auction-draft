@@ -12,16 +12,18 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "start": "tsx packages/server/src/main.ts"
   },
+  "dependencies": {
+    "tsx": "^4.23.5"
+  },
   "devDependencies": {
-    "@types/express": "^5.0.6",
-    "@types/node": "^26.1.2",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22",
     "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.20.4",
     "@types/supertest": "^7.2.1",
     "pg-mem": "^3.0.14",
     "socket.io-client": "^4.8.3",
     "supertest": "^7.2.2",
-    "tsx": "^4.23.5",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"
   }

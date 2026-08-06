@@ -82,6 +82,7 @@ describe('socket gateway', () => {
     const c = await connect(port, tokens.commissioner)
     open.push(c.socket)
     expect(c.snapshot).toMatchObject({ seq: 0, role: 'commissioner', state: { phase: { type: 'lobby' } } })
+    expect(Number.isFinite(c.snapshot.now)).toBe(true)
     const m = await connect(port, tokens.t1)
     open.push(m.socket)
     expect(m.snapshot).toMatchObject({ role: 'manager', teamId: 'T1' })
@@ -112,6 +113,46 @@ describe('socket gateway', () => {
     await new Promise(r => setTimeout(r, 50))
     expect(received.flatMap(e => e.events.map((x: any) => x.type))).toContain('PLAYER_NOMINATED')
   })
+
+  it('commissioner can drive every correction tool over the wire', async () => {
+    const c = await connect(port, tokens.commissioner)
+    const m1 = await connect(port, tokens.t1)
+    open.push(c.socket, m1.socket)
+    const received: any[] = []
+    c.socket.on('events', e => received.push(e))
+    // Waits for a broadcast event of the given type rather than a blind sleep, since
+    // the SOLD below comes from the room's own bid-clock timer, not from an ack.
+    const waitForEventType = (type: string, timeoutMs = 5000): Promise<void> =>
+      new Promise((resolve, reject) => {
+        const seen = () => received.some(e => e.events.some((x: any) => x.type === type))
+        if (seen()) return resolve()
+        const interval = setInterval(() => {
+          if (seen()) {
+            clearInterval(interval)
+            clearTimeout(timer)
+            resolve()
+          }
+        }, 20)
+        const timer = setTimeout(() => {
+          clearInterval(interval)
+          reject(new Error(`timed out waiting for ${type}`))
+        }, timeoutMs)
+      })
+
+    expect((await emit(c.socket, { type: 'START_DRAFT' })).ok).toBe(true)
+    expect((await emit(c.socket, { type: 'SET_TIMERS', bidClockMs: 1_000 })).ok).toBe(true)
+    expect((await emit(c.socket, { type: 'ADD_TIME', ms: 5_000 })).ok).toBe(true)
+    expect((await emit(c.socket, { type: 'PAUSE' })).ok).toBe(true)
+    expect((await emit(c.socket, { type: 'RESUME' })).ok).toBe(true)
+    // No live bid yet (still awaiting a nomination), so a budget correction is legal here.
+    expect((await emit(c.socket, { type: 'ADJUST_BUDGET', teamId: 'T2', delta: 5 })).ok).toBe(true)
+    // Proxy-nominate for T1. The 1s bid clock (set above) then expires on its own with
+    // T1 as the only bidder, producing a real SOLD for UNDO_SALE/EDIT_PICK to correct.
+    expect((await emit(c.socket, { type: 'NOMINATE', teamId: 'T1', playerId: 'q1', openingBid: 3 })).ok).toBe(true)
+    await waitForEventType('SOLD')
+    expect((await emit(c.socket, { type: 'EDIT_PICK', overall: 1, newPrice: 5 })).ok).toBe(true)
+    expect((await emit(c.socket, { type: 'UNDO_SALE' })).ok).toBe(true)
+  }, 10_000)
 
   it('acks a command sent immediately on connect, before the snapshot arrives', async () => {
     // socket.io drops events with no listener, so a client that does not wait for

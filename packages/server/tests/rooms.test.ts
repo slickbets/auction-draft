@@ -113,6 +113,16 @@ describe('RoomManager', () => {
     expect(await manager.getOrLoad(created.id)).toBe(after)
   })
 
+  it('concurrent reloads yield exactly one live room, and it is the cached one', async () => {
+    const created = await leagues.create('My League', goodConfig())
+    await manager.getOrLoad(created.id)
+    const [a, b] = await Promise.all([manager.reload(created.id), manager.reload(created.id)])
+    expect(a).not.toBeNull()
+    expect(b).toBe(a) // both callers see the same room
+    expect(await manager.getOrLoad(created.id)).toBe(a) // and it is the one cached
+    await manager.closeAll()
+  })
+
   it('closeAll clears every room so the next getOrLoad reloads fresh', async () => {
     const created = await leagues.create('My League', goodConfig())
     const a = await manager.getOrLoad(created.id)

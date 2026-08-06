@@ -10,7 +10,7 @@ const clock = z.number().int().min(1_000).max(600_000)
 export const StoredConfigSchema = z
   .object({
     teams: z.array(z.object({ id: z.string().min(1), name: z.string().min(1) })).min(2).max(20),
-    budget: z.number().int().positive(),
+    budget: z.number().int().positive().max(10_000),
     rosterTemplate: z
       .array(z.object({ name: z.string().min(1), eligible: z.array(z.enum(POSITIONS)).min(1), count: z.number().int().min(1) }))
       .min(1),

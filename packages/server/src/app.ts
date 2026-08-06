@@ -27,20 +27,26 @@ export function createApp(deps: AppDeps): express.Express {
       return res.status(201).json(created)
     } catch (err) {
       if (err instanceof ZodError) return res.status(400).json({ error: 'invalid config', issues: err.issues })
-      throw err
+      console.error('POST /api/leagues failed', err)
+      return res.status(500).json({ error: 'internal' })
     }
   })
 
   app.post('/api/leagues/:id/refresh-players', async (req, res) => {
     if (!deps.leagues || !deps.players) return res.status(503).json({ error: 'not configured' })
-    const auth = req.header('authorization') ?? ''
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
-    const principal = token ? await deps.leagues.resolveToken(token) : null
-    if (!principal || principal.role !== 'commissioner' || principal.leagueId !== req.params.id) {
-      return res.status(403).json({ error: 'forbidden' })
+    try {
+      const auth = req.header('authorization') ?? ''
+      const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+      const principal = token ? await deps.leagues.resolveToken(token) : null
+      if (!principal || principal.role !== 'commissioner' || principal.leagueId !== req.params.id) {
+        return res.status(403).json({ error: 'forbidden' })
+      }
+      const updated = await deps.players.sync()
+      return res.json({ updated })
+    } catch (err) {
+      console.error('POST /api/leagues/:id/refresh-players failed', err)
+      return res.status(500).json({ error: 'internal' })
     }
-    const updated = await deps.players.sync()
-    return res.json({ updated })
   })
 
   return app
