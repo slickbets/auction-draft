@@ -13,7 +13,7 @@ describe('CLOCK_EXPIRED during bidding', () => {
     const sold = r.events[0]!
     expect(sold).toMatchObject({ type: 'SOLD', playerId: 'RB1', teamId: 'T5', price: 42, slot: 'RB', overall: 1 })
     expect(r.state.teams['T5']!.budget).toBe(158)
-    expect(r.state.teams['T5']!.roster).toEqual([{ playerId: 'RB1', price: 42, slot: 'RB' }])
+    expect(r.state.teams['T5']!.roster).toEqual([{ playerId: 'RB1', price: 42, slot: 'RB', position: 'RB' }])
     expect(r.state.available).not.toContain('RB1')
     expect(r.state.sales).toHaveLength(1)
     expect(r.state.phase).toMatchObject({ type: 'awaiting_nomination', teamId: 'T2' })

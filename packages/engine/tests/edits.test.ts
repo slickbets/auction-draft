@@ -18,7 +18,7 @@ describe('EDIT_PICK', () => {
     expect(r.state.teams['T5']!.budget).toBe(200)
     expect(r.state.teams['T5']!.roster).toEqual([])
     expect(r.state.teams['T3']!.budget).toBe(158)
-    expect(r.state.teams['T3']!.roster).toEqual([{ playerId: 'RB1', price: 42, slot: 'RB' }])
+    expect(r.state.teams['T3']!.roster).toEqual([{ playerId: 'RB1', price: 42, slot: 'RB', position: 'RB' }])
     expect(r.state.sales[0]).toMatchObject({ teamId: 'T3', price: 42 })
   })
 
@@ -27,7 +27,7 @@ describe('EDIT_PICK', () => {
     const r = run(s, { type: 'EDIT_PICK', overall: 1, newPrice: 40, now: 20_000 })
     if (!r.ok) throw new Error(r.error.code)
     expect(r.state.teams['T5']!.budget).toBe(160)
-    expect(r.state.teams['T5']!.roster[0]).toEqual({ playerId: 'RB1', price: 40, slot: 'RB' })
+    expect(r.state.teams['T5']!.roster[0]).toEqual({ playerId: 'RB1', price: 40, slot: 'RB', position: 'RB' })
   })
 
   it('rejects unknown sales and edits that break the budget invariant', () => {
@@ -58,7 +58,7 @@ describe('EDIT_PICK', () => {
     const exact = run(s, { type: 'EDIT_PICK', overall: 1, newTeamId: 'T2', newPrice: 45, now: 21_000 })
     if (!exact.ok) throw new Error(exact.error.code)
     expect(exact.state.teams['T2']!.budget).toBe(15)
-    expect(exact.state.teams['T2']!.roster).toEqual([{ playerId: 'RB1', price: 45, slot: 'RB' }])
+    expect(exact.state.teams['T2']!.roster).toEqual([{ playerId: 'RB1', price: 45, slot: 'RB', position: 'RB' }])
   })
 
   it('rejects unknown teams, bad prices, and fractional deltas', () => {

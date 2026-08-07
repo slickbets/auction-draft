@@ -16,6 +16,7 @@ export const StoredConfigSchema = z
       .min(1),
     bidClockMs: clock,
     nominationClockMs: clock,
+    maxPerPosition: z.record(z.enum(POSITIONS), z.number().int().min(0)).optional(),
     nominationOrder: z.array(z.string()),
     nominationExpiryPolicy: z.enum(['auto_nominate', 'skip']),
   })
@@ -29,6 +30,22 @@ export const StoredConfigSchema = z
     // fill every roster slot at $1, which is exactly the engine's max-bid invariant.
     if (cfg.budget < rosterCapacity(cfg.rosterTemplate))
       ctx.addIssue({ code: 'custom', message: `budget must be at least roster capacity (${rosterCapacity(cfg.rosterTemplate)})` })
+    // Feasibility: sum the caps over every position some slot accepts, treating an
+    // absent cap as unbounded (a single uncapped accepted position already makes the
+    // sum infinite, so the check only bites when every accepted position is capped).
+    if (cfg.maxPerPosition) {
+      const accepted = new Set<string>()
+      for (const slot of cfg.rosterTemplate) for (const p of slot.eligible) accepted.add(p)
+      let sum = 0
+      let allCapped = true
+      for (const p of accepted) {
+        const cap = cfg.maxPerPosition[p as (typeof POSITIONS)[number]]
+        if (cap === undefined) { allCapped = false; break }
+        sum += cap
+      }
+      if (allCapped && sum < rosterCapacity(cfg.rosterTemplate))
+        ctx.addIssue({ code: 'custom', message: 'maxPerPosition too restrictive to fill a roster' })
+    }
   })
 export type StoredConfig = z.infer<typeof StoredConfigSchema>
 

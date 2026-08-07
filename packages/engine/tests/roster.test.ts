@@ -31,9 +31,9 @@ describe('roster math', () => {
     const s = initialState(cfg)
     const t1 = s.teams['T1']!
     expect(firstOpenSlotFor(t1, 'RB', cfg)).toBe('RB')
-    t1.roster.push({ playerId: 'RB1', price: 1, slot: 'RB' }, { playerId: 'RB2', price: 1, slot: 'RB' })
+    t1.roster.push({ playerId: 'RB1', price: 1, slot: 'RB', position: 'RB' }, { playerId: 'RB2', price: 1, slot: 'RB', position: 'RB' })
     expect(firstOpenSlotFor(t1, 'RB', cfg)).toBe('FLEX')
-    t1.roster.push({ playerId: 'RB3', price: 1, slot: 'FLEX' })
+    t1.roster.push({ playerId: 'RB3', price: 1, slot: 'FLEX', position: 'RB' })
     expect(firstOpenSlotFor(t1, 'RB', cfg)).toBe('BENCH')
     expect(firstOpenSlotFor(t1, 'QB', cfg)).toBe('QB')
   })
