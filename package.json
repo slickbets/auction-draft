@@ -8,6 +8,10 @@
   "workspaces": [
     "packages/*"
   ],
+  "overrides": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
