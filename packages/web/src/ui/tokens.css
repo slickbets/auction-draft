@@ -1,0 +1,51 @@
+:root {
+  --pitch: #0B0F14;
+  --surface: #131A22;
+  --line: #1F2A35;
+  --ink: #E8EDF2;
+  --muted: #8A9AAA;
+  --brass: #E0A32E;
+  --siren: #FF4D2E;
+  --sold: #2ED47A;
+
+  --pos-qb: #F0526B;
+  --pos-rb: #22C3A6;
+  --pos-wr: #3B9DFF;
+  --pos-te: #F5883C;
+  --pos-dst: #9B8CFF;
+
+  --step: 8px;
+  --radius: 10px;
+  --font: 'Archivo', system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--pitch);
+  color: var(--ink);
+  font-family: var(--font);
+  font-variation-settings: 'wdth' 100, 'wght' 400;
+  -webkit-text-size-adjust: 100%;
+}
+
+.numerals { font-variant-numeric: tabular-nums; font-variation-settings: 'wdth' 75, 'wght' 800; }
+.label { color: var(--muted); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.name { font-variation-settings: 'wdth' 88, 'wght' 700; }
+
+:where(button, a, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+@keyframes tick-roll { from { transform: translateY(0.25em); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes delta-rise { from { transform: none; opacity: 1; } to { transform: translateY(-1.2em); opacity: 0; } }
+@keyframes urgency { 50% { box-shadow: 0 0 0 2px var(--siren) inset; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}
