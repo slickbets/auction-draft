@@ -99,4 +99,20 @@ describe('LeagueService', () => {
     expect(again.players).toEqual(POOL) // second freeze ignored, and not rejected by pool validation
     expect((await svc.frozenConfig(created.id))!.players).toEqual(POOL)
   })
+
+  it('rejects maxPerPosition caps too restrictive to ever fill a roster', async () => {
+    // TEMPLATE capacity is 1 (QB) + 2 (BENCH) = 3. Capping every accepted position
+    // at 0 makes the sum of caps 0, well under capacity — no team could ever fill.
+    const cfg = { ...goodConfig(), maxPerPosition: { QB: 0, RB: 0, WR: 0, TE: 0, K: 0, DST: 0 } }
+    await expect(svc.create('X', cfg)).rejects.toThrow(/too restrictive/i)
+  })
+
+  it('accepts feasible maxPerPosition caps, including a single zero cap that just drops one position', async () => {
+    const fullyCapped = { ...goodConfig(), maxPerPosition: { QB: 1, RB: 1, WR: 1, TE: 1, K: 1, DST: 1 } } // sum 6 >= capacity 3
+    await expect(svc.create('X', fullyCapped)).resolves.toBeTruthy()
+    // Only K is capped (to 0, i.e. "no kickers"); every other position is unbounded,
+    // so the sum is effectively infinite and always feasible.
+    const dropsKickers = { ...goodConfig(), maxPerPosition: { K: 0 } }
+    await expect(svc.create('Y', dropsKickers)).resolves.toBeTruthy()
+  })
 })

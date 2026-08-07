@@ -40,9 +40,9 @@ describe('BID', () => {
     const s2 = structuredClone(s)
     const t2 = s2.teams['T2']!
     t2.roster = [
-      { playerId: 'RB2', price: 1, slot: 'RB' }, { playerId: 'RB3', price: 1, slot: 'RB' },
-      { playerId: 'RB4', price: 1, slot: 'FLEX' },
-      ...Array.from({ length: 7 }, (_, i) => ({ playerId: `WR${i + 1}`, price: 1, slot: 'BENCH' })),
+      { playerId: 'RB2', price: 1, slot: 'RB', position: 'RB' }, { playerId: 'RB3', price: 1, slot: 'RB', position: 'RB' },
+      { playerId: 'RB4', price: 1, slot: 'FLEX', position: 'RB' },
+      ...Array.from({ length: 7 }, (_, i) => ({ playerId: `WR${i + 1}`, price: 1, slot: 'BENCH', position: 'WR' as const })),
     ]
     t2.budget = 190
     const r = run(s2, { type: 'BID', teamId: 'T2', amount: 11, now: 5000 })

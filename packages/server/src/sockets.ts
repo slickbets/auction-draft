@@ -1,6 +1,7 @@
 import type { Server, Socket } from 'socket.io'
 import { ZodError } from 'zod'
-import { rosterCapacity } from '@auction/engine'
+import { rosterCapacity, isDraftablePosition } from '@auction/engine'
+import type { LeagueConfig } from '@auction/engine'
 import type { LeagueService, Principal } from './league.js'
 import type { PlayerRepo } from './players.js'
 import type { RoomManager } from './rooms.js'
@@ -102,8 +103,11 @@ export function attachSockets(io: Server, deps: SocketDeps): void {
       if (!target) return deny(ack, 'NO_LEAGUE', 'league not found')
 
       if (cmd.type === 'START_DRAFT' && !(await deps.leagues.frozenConfig(leagueId))) {
-        const pool = await deps.playerRepo.listForDraft()
         const rec = await deps.leagues.get(leagueId)
+        // Undraftable positions (e.g. a league with maxPerPosition.K = 0, dropping
+        // kickers) never enter the frozen config, the player search, or the snapshot.
+        const pool = (await deps.playerRepo.listForDraft())
+          .filter(p => !rec || isDraftablePosition(rec.config as LeagueConfig, p.position))
         const needed = rec ? rec.config.teams.length * rosterCapacity(rec.config.rosterTemplate) : 1
         if (pool.length < needed) {
           return deny(ack, 'NO_PLAYERS', `player pool has ${pool.length}, need at least ${needed} — refresh players first`)

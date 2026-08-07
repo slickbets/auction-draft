@@ -40,13 +40,14 @@ describe('socket gateway', () => {
   let leagues: LeagueService
   let leagueId: string
   let tokens: { commissioner: string; board: string; t1: string; t2: string }
+  let playerRepo: PlayerRepo
   const open: Socket[] = []
 
   beforeEach(async () => {
     const pool = newTestPool()
     await migrate(pool)
     leagues = new LeagueService(pool, 'http://x')
-    const playerRepo = new PlayerRepo(pool)
+    playerRepo = new PlayerRepo(pool)
     await playerRepo.upsertAll(toPlayerRows(SLEEPER_FIXTURE))
     const store = new PgEventStore(pool)
     http = createServer()
@@ -183,5 +184,66 @@ describe('socket gateway', () => {
     const flat = seen.map(p => p.connected.map((x: any) => x.teamId ?? x.role).sort())
     expect(flat.some(l => l.includes('T2'))).toBe(true)
     expect(flat[flat.length - 1]).not.toContain('T2')
+  })
+
+  it('freezing excludes positions the caps make undraftable, once enough draftable players exist', async () => {
+    // Base fixture already seeded q1/q2 (2 QB). Add two more QBs so the draftable
+    // (QB-only) pool meets the 4-player need, plus two RBs that must be excluded.
+    await playerRepo.upsertAll(toPlayerRows({
+      q3: { full_name: 'QB Three', position: 'QB', team: 'DAL', status: 'Active', search_rank: 3 },
+      q4: { full_name: 'QB Four', position: 'QB', team: 'NYJ', status: 'Active', search_rank: 4 },
+      r1: { full_name: 'RB One', position: 'RB', team: 'SF', status: 'Active', search_rank: 5 },
+      r2: { full_name: 'RB Two', position: 'RB', team: 'KC', status: 'Active', search_rank: 6 },
+    }))
+    const capsConfig = {
+      teams: [{ id: 'T1', name: 'A' }, { id: 'T2', name: 'B' }],
+      budget: 200,
+      rosterTemplate: [
+        { name: 'QB', eligible: ['QB'], count: 1 },
+        { name: 'BENCH', eligible: ['QB', 'RB'], count: 1 },
+      ], // capacity 2/team, needed = 4 total
+      maxPerPosition: { RB: 0 },
+      bidClockMs: 10_000,
+      nominationClockMs: 30_000,
+      nominationOrder: ['T1', 'T2'],
+      nominationExpiryPolicy: 'auto_nominate',
+    }
+    const created = await leagues.create('Caps League', capsConfig)
+    const c = await connect(port, created.links.commissioner.split('#')[1]!)
+    open.push(c.socket)
+    const started = await emit(c.socket, { type: 'START_DRAFT' })
+    expect(started.ok).toBe(true)
+    const frozen = await leagues.frozenConfig(created.id)
+    expect(frozen!.players).toHaveLength(4)
+    expect(frozen!.players.every(p => p.position === 'QB')).toBe(true)
+  })
+
+  it('applies the pool-sufficiency guard to the filtered pool, not the raw one', async () => {
+    // Enough TOTAL players (2 QB + 3 RB = 5 >= needed 4) but, once RB is excluded by
+    // the cap, only 2 QB remain — the guard must see the post-filter count and deny.
+    await playerRepo.upsertAll(toPlayerRows({
+      r1: { full_name: 'RB One', position: 'RB', team: 'SF', status: 'Active', search_rank: 3 },
+      r2: { full_name: 'RB Two', position: 'RB', team: 'KC', status: 'Active', search_rank: 4 },
+      r3: { full_name: 'RB Three', position: 'RB', team: 'DAL', status: 'Active', search_rank: 5 },
+    }))
+    const capsConfig = {
+      teams: [{ id: 'T1', name: 'A' }, { id: 'T2', name: 'B' }],
+      budget: 200,
+      rosterTemplate: [
+        { name: 'QB', eligible: ['QB'], count: 1 },
+        { name: 'BENCH', eligible: ['QB', 'RB'], count: 1 },
+      ], // capacity 2/team, needed = 4 total
+      maxPerPosition: { RB: 0 },
+      bidClockMs: 10_000,
+      nominationClockMs: 30_000,
+      nominationOrder: ['T1', 'T2'],
+      nominationExpiryPolicy: 'auto_nominate',
+    }
+    const created = await leagues.create('Caps League 2', capsConfig)
+    const c = await connect(port, created.links.commissioner.split('#')[1]!)
+    open.push(c.socket)
+    const started = await emit(c.socket, { type: 'START_DRAFT' })
+    expect(started.ok).toBe(false)
+    expect(started.error.code).toBe('NO_PLAYERS')
   })
 })

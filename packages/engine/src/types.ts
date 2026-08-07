@@ -20,6 +20,9 @@ export interface LeagueConfig {
   teams: TeamConfig[]
   budget: number
   rosterTemplate: SlotDef[] // ordered; SOLD assigns to first eligible open slot
+  /** Optional per-position roster caps (e.g. ESPN's QB<=4). A position absent from
+   *  this map is uncapped; a cap of 0 makes the position undraftable. */
+  maxPerPosition?: Partial<Record<Position, number>>
   bidClockMs: number
   nominationClockMs: number
   nominationOrder: string[] // team ids, rotation order
@@ -27,7 +30,7 @@ export interface LeagueConfig {
   players: PlayerInfo[]
 }
 
-export interface RosterEntry { playerId: string; price: number; slot: string }
+export interface RosterEntry { playerId: string; price: number; slot: string; position: Position }
 
 export interface TeamState { id: string; name: string; budget: number; roster: RosterEntry[] }
 

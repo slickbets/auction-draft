@@ -236,7 +236,8 @@ export function apply(state: DraftState, event: DraftEvent): DraftState {
     }
     case 'SOLD': {
       const team = s.teams[event.teamId]!
-      team.roster.push({ playerId: event.playerId, price: event.price, slot: event.slot })
+      const player = s.config.players.find(p => p.id === event.playerId)!
+      team.roster.push({ playerId: event.playerId, price: event.price, slot: event.slot, position: player.position })
       team.budget -= event.price
       s.available = s.available.filter(id => id !== event.playerId)
       s.sales.push({
@@ -294,9 +295,10 @@ export function apply(state: DraftState, event: DraftEvent): DraftState {
         entry.slot = event.newSlot
         from.budget += event.oldPrice - event.newPrice
       } else {
+        const player = s.config.players.find(p => p.id === sale.playerId)!
         from.roster = from.roster.filter(r => r.playerId !== sale.playerId)
         from.budget += event.oldPrice
-        to.roster.push({ playerId: sale.playerId, price: event.newPrice, slot: event.newSlot })
+        to.roster.push({ playerId: sale.playerId, price: event.newPrice, slot: event.newSlot, position: player.position })
         to.budget -= event.newPrice
       }
       sale.teamId = event.toTeamId
