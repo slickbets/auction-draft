@@ -10,6 +10,7 @@ import { BidControls } from './BidControls.js'
 import { NominateSheet } from './NominateSheet.js'
 import { RosterSheet } from './RosterSheet.js'
 import { TeamsSheet } from './TeamsSheet.js'
+import { CommissionerBar } from './CommissionerBar.js'
 
 /** Re-renders on an interval so a countdown driven by `client.msLeft` keeps
  *  counting down instead of freezing at whatever value was true when the
@@ -30,6 +31,7 @@ export function ManagerView({ client, view }: { client: DraftClient; view: Draft
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      {view.role === 'commissioner' && <CommissionerBar client={client} view={view} />}
       <StatusHeader view={view} />
       <div data-testid="phase-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <PhaseBody client={client} view={view} />

@@ -35,7 +35,7 @@ export function App({ client }: { client: DraftClient }) {
 
   return (
     <Screen banner={banner}>
-      {view.role === 'board' ? <BoardView view={view} /> : <ManagerView client={client} view={view} />}
+      {view.role === 'board' ? <BoardView client={client} view={view} /> : <ManagerView client={client} view={view} />}
     </Screen>
   )
 }

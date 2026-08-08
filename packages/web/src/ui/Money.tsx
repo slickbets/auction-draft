@@ -1,4 +1,9 @@
 const SIZES = {
+  // The board is read from across a room, not held in a hand — its price is the
+  // largest scale in the product, so it clamps against `vmin` (the smaller of a
+  // 55" TV's or a laptop's two dimensions) rather than `vw` the way `hero` does,
+  // and floors/ceilings higher than any phone-held size ever needs to.
+  board: 'clamp(5rem, 16vmin, 15rem)',
   hero: 'clamp(3.5rem, 18vw, 6rem)',
   row: '1.5rem',
   inline: '1rem',

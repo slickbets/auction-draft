@@ -113,6 +113,20 @@ describe('ManagerView — complete', () => {
   })
 })
 
+describe('ManagerView — commissioner bar', () => {
+  it('mounts the commissioner bar only for the commissioner role', () => {
+    const state = testState()
+    const { client: mgrClient } = makeFakeClient({ state, teamId: 'T1', role: 'manager' })
+    const { unmount } = render(<ManagerView client={mgrClient} view={mgrClient.view} />)
+    expect(screen.queryByText('Start draft')).toBeNull()
+    unmount()
+
+    const { client: commishClient } = makeFakeClient({ state, teamId: null, role: 'commissioner' })
+    render(<ManagerView client={commishClient} view={commishClient.view} />)
+    expect(screen.getByText('Start draft')).toBeTruthy()
+  })
+})
+
 describe('StatusHeader (mounted inside ManagerView)', () => {
   it("shows the viewer's engine-derived budget, max bid, and open slots — never hand-computed", () => {
     const state = testState()

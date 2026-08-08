@@ -1,6 +1,9 @@
 import type { Position } from '@auction/engine'
 
-const COLOR: Record<Position, string> = {
+/** Exported so other position-colored UI (the board's team-grid slot pips) shares
+ *  this single mapping instead of re-declaring which token goes with which
+ *  position. */
+export const POSITION_COLOR: Record<Position, string> = {
   QB: 'var(--pos-qb)',
   RB: 'var(--pos-rb)',
   WR: 'var(--pos-wr)',
@@ -16,7 +19,7 @@ export function PositionChip({ position }: { position: Position }) {
         display: 'inline-block',
         padding: '2px 6px',
         borderRadius: 4,
-        background: COLOR[position],
+        background: POSITION_COLOR[position],
         color: 'var(--pitch)',
         fontSize: '0.7rem',
         fontVariationSettings: "'wdth' 88, 'wght' 700",
