@@ -37,6 +37,21 @@ body {
 .label { color: var(--muted); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .name { font-variation-settings: 'wdth' 88, 'wght' 700; }
 
+/* Visually hidden but present for assistive tech — e.g. Money's "dollars" suffix
+   and BlockCard's price-change live region. Referenced since Task 4 but never
+   defined until now, which left that text rendering visibly next to every price. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 :where(button, a, input, [tabindex]):focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: 2px;
