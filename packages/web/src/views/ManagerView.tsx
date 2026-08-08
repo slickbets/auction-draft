@@ -3,9 +3,13 @@ import type { DraftClient, DraftView } from '../client/draftClient.js'
 import { Countdown } from '../ui/Countdown.js'
 import { Money } from '../ui/Money.js'
 import { PositionChip } from '../ui/PositionChip.js'
+import { Button } from '../ui/Button.js'
 import { StatusHeader } from './StatusHeader.js'
 import { BlockCard } from './BlockCard.js'
 import { BidControls } from './BidControls.js'
+import { NominateSheet } from './NominateSheet.js'
+import { RosterSheet } from './RosterSheet.js'
+import { TeamsSheet } from './TeamsSheet.js'
 
 /** Re-renders on an interval so a countdown driven by `client.msLeft` keeps
  *  counting down instead of freezing at whatever value was true when the
@@ -21,6 +25,7 @@ function useLiveMsLeft(client: DraftClient, deadline: number): number {
 }
 
 export function ManagerView({ client, view }: { client: DraftClient; view: DraftView }) {
+  const [sheet, setSheet] = useState<'roster' | 'teams' | null>(null)
   if (!view.state) return null
 
   return (
@@ -29,6 +34,27 @@ export function ManagerView({ client, view }: { client: DraftClient; view: Draft
       <div data-testid="phase-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <PhaseBody client={client} view={view} />
       </div>
+
+      <div
+        style={{
+          display: 'flex',
+          gap: 'var(--step)',
+          padding: 'var(--step) calc(var(--step) * 2) calc(var(--step) * 2)',
+          borderTop: '1px solid var(--line)',
+        }}
+      >
+        <Button variant="ghost" onClick={() => setSheet('roster')}>
+          Your roster
+        </Button>
+        <Button variant="ghost" onClick={() => setSheet('teams')}>
+          All teams
+        </Button>
+      </div>
+
+      {view.teamId && (
+        <RosterSheet view={view} teamId={view.teamId} open={sheet === 'roster'} onClose={() => setSheet(null)} />
+      )}
+      <TeamsSheet view={view} open={sheet === 'teams'} onClose={() => setSheet(null)} />
     </div>
   )
 }
@@ -98,8 +124,9 @@ function AwaitingNominationPhase({ client, view }: { client: DraftClient; view: 
         <div style={{ marginTop: 'var(--step)' }}>
           <Countdown msLeft={msLeft} totalMs={totalMs} />
         </div>
-        {/* Mount point for the nominate sheet (a later task). */}
-        <div data-testid="nominate-sheet-mount" />
+        <div data-testid="nominate-sheet-mount">
+          <NominateSheet client={client} view={view} />
+        </div>
       </div>
     )
   }
