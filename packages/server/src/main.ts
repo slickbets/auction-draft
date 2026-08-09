@@ -18,7 +18,7 @@ export async function buildServer(env: Env, pool: Pool): Promise<{ http: HttpSer
   const leagues = new LeagueService(pool, env.BASE_URL)
   const playerRepo = new PlayerRepo(pool)
   const sync = async () => playerRepo.upsertAll(toPlayerRows(await fetchSleeperPlayers()))
-  const app = createApp({ leagues, players: { repo: playerRepo, sync }, createKey: env.CREATE_KEY })
+  const app = createApp({ leagues, players: { repo: playerRepo, sync }, createKey: env.CREATE_KEY, webDist: env.WEB_DIST })
   const http = createServer(app)
   const io = new Server(http)
   const rooms = new RoomManager(

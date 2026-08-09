@@ -7,6 +7,7 @@ export interface AppDeps {
   leagues?: LeagueService
   players?: { repo: PlayerRepo; sync: () => Promise<number> }
   createKey?: string
+  webDist?: string
 }
 
 export function createApp(deps: AppDeps): express.Express {
@@ -48,6 +49,13 @@ export function createApp(deps: AppDeps): express.Express {
       return res.status(500).json({ error: 'internal' })
     }
   })
+
+  if (deps.webDist) {
+    app.use(express.static(deps.webDist))
+    app.get('/draft/*', (_req, res) => {
+      res.sendFile('index.html', { root: deps.webDist! })
+    })
+  }
 
   return app
 }

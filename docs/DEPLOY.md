@@ -9,6 +9,7 @@ Runtime decision (recorded): the server runs under `tsx` (no build step). Revisi
    - `BASE_URL` → the app service's public domain (Settings → Networking → Generate Domain, then paste `https://<domain>`).
    - `CREATE_KEY` → a long random string (`openssl rand -base64 24`).
    - `SLEEPER_SYNC` → `1`.
+   - `WEB_DIST` → `packages/web/dist` (the client build output; serves the SPA same-origin so invite links resolve).
 4. Settings → Deploy: start command is auto-detected from root `npm start`; healthcheck path `/healthz`.
 5. Deploy. Verify: `curl https://<domain>/healthz` → `{"ok":true}`; logs show `seeded players: <n>` on first boot.
 6. Create the league:

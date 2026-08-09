@@ -6,6 +6,7 @@ const EnvSchema = z.object({
   BASE_URL: z.string().url(),
   CREATE_KEY: z.string().min(1),
   SLEEPER_SYNC: z.enum(['0', '1']).default('0'),
+  WEB_DIST: z.string().optional(),
 })
 export type Env = z.infer<typeof EnvSchema>
 
