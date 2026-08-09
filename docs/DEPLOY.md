@@ -1,6 +1,6 @@
 # Deploying to Railway
 
-Runtime decision (recorded): the server runs under `tsx` (no build step). Revisit if/when this becomes a multi-tenant product.
+Runtime decision (recorded): the server runs its TypeScript directly under `tsx`, so there is no server build. There *is* a client build — Railway runs `npm run build` (which builds `packages/web` into `packages/web/dist`) at build time and `npm start` at boot. Keep the build out of `start`: rebuilding on every boot would delay the healthcheck after a mid-draft restart, which is the worst possible moment to spend time bundling.
 
 1. railway.com → New Project → "Deploy from GitHub repo" → select `slickbets/auction-draft` (grant repo access if prompted).
 2. In the new project: **+ New → Database → PostgreSQL.**
