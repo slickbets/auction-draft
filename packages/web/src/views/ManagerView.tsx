@@ -27,6 +27,15 @@ function useLiveMsLeft(client: DraftClient, deadline: number): number {
 
 export function ManagerView({ client, view }: { client: DraftClient; view: DraftView }) {
   const [sheet, setSheet] = useState<'roster' | 'teams' | null>(null)
+
+  // Close the reference sheets the moment a new player hits the block. Checking your
+  // roster between nominations is exactly what these are for, but a modal left open
+  // over a live auction hides the bid buttons while a 10-second clock drains.
+  const onBlock = view.state?.phase.type === 'bidding' ? view.state.phase.playerId : null
+  useEffect(() => {
+    if (onBlock) setSheet(null)
+  }, [onBlock])
+
   if (!view.state) return null
 
   return (

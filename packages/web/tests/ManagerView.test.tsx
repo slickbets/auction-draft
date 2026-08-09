@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, within, act } from '@testing-library/react'
+import { render, screen, within, act, fireEvent } from '@testing-library/react'
 import { maxBid, openSlotCount } from '@auction/engine'
 import { ManagerView } from '../src/views/ManagerView.js'
 import { makeFakeClient } from './helpers/fakeClient.js'
@@ -139,5 +139,29 @@ describe('StatusHeader (mounted inside ManagerView)', () => {
     expect(screen.getByText(String(expectedMax))).toBeTruthy()
     expect(screen.getByText(String(team.budget))).toBeTruthy()
     expect(screen.getByText(String(expectedOpen))).toBeTruthy()
+  })
+
+  it('closes an open reference sheet when a new player hits the block', () => {
+    // Checking your roster between nominations is the point of the sheet; leaving it
+    // open over a live auction would hide the bid buttons while the clock drains.
+    const waiting = testState({ phase: { type: 'awaiting_nomination', teamId: 'T2', deadline: Date.now() + 30_000 } })
+    const { client } = makeFakeClient({ role: 'manager', teamId: 'T1', state: waiting })
+    const { rerender } = render(<ManagerView client={client} view={client.view} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /your roster/i }))
+    expect(screen.getByRole('dialog')).toBeTruthy()
+
+    const bidding = testState({
+      phase: {
+        type: 'bidding',
+        playerId: 'RB1',
+        price: 3,
+        highBidderId: 'T2',
+        nominatorId: 'T2',
+        deadline: Date.now() + 10_000,
+      },
+    })
+    rerender(<ManagerView client={client} view={{ ...client.view, state: bidding }} />)
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 })
